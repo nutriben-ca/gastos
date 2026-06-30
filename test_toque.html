@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prueba de toque</title>
+<style>
+body{font-family:sans-serif;padding:40px;text-align:center;background:#0033A1}
+button{padding:20px 40px;font-size:20px;background:white;color:#0033A1;border:none;border-radius:10px;margin-top:30px}
+#resultado{color:white;font-size:24px;margin-top:30px;font-weight:bold}
+</style>
+</head>
+<body>
+<h1 style="color:white">Prueba simple</h1>
+<button onclick="document.getElementById('resultado').textContent='✅ FUNCIONÓ - '+new Date().toLocaleTimeString()">
+  Toca aquí
+</button>
+<div id="resultado">Esperando toque...</div>
+</body>
+</html>
