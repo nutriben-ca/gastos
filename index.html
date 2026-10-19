@@ -787,6 +787,7 @@ function gcode(){return Math.random().toString(36).substr(2,8).toUpperCase()}
 function vv(id){return document.getElementById(id)?.value||''}
 function esc(s){return(s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function today(){return new Date().toISOString().split('T')[0]}
+function fmtF(n,c){const s=SYM[c]||'';return s+(parseFloat(n)||0).toLocaleString('es-HN',{minimumFractionDigits:2,maximumFractionDigits:4})}
 function fmt(n,c){const s=SYM[c]||'';return s+(parseFloat(n)||0).toLocaleString('es-HN',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function sbadge(s){const m={borrador:['bd','Borrador'],enviado:['bs','Enviado'],aprobado_distrito:['bp','Aprobado Jefe'],aprobado_general:['ba','Aprobado ✓'],rechazado:['br','Rechazado']};const[c,l]=m[s]||['bd',s];return`<span class="badge ${c}">${l}</span>`}
 const MGR=['gerente_distrito','jefe_visitador'];
@@ -1867,7 +1868,7 @@ function renderTrips(k){
         <select class="fse" style="flex:1;min-width:0" onchange="setTrip('${k}',${i},'route',this.value)">${routeOpts(s,t.route_id,t.custom)}</select>
         <button type="button" class="btn bgh btn-sm" onclick="rmTrip('${k}',${i})" aria-label="Quitar">✕</button>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--soft);margin-top:5px"><span>🏙️ ${kmf(a.km)} km × ${fmt(a.factor,cur)}${isWk(t.trip_date)?' · <span style="color:#B45309;font-weight:700">fin de semana</span>':''}</span><strong style="color:var(--p)">${fmt(a.amount,cur)}</strong></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--soft);margin-top:5px"><span>🏙️ ${kmf(a.km)} km × ${fmtF(a.factor,cur)}${isWk(t.trip_date)?' · <span style="color:#B45309;font-weight:700">fin de semana</span>':''}</span><strong style="color:var(--p)">${fmt(a.amount,cur)}</strong></div>
       ${iss[i].length?`<div style="font-size:12px;color:#B45309;font-weight:700;margin-top:4px">⚠️ ${iss[i].join(' · ')}</div>`:''}</div>`;
     return`<div class="mci trow" style="${iss[i].length?'border-color:#F59E0B;':''}${r?.is_city?'':'background:#F8FAFF;'}">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
@@ -1885,7 +1886,7 @@ function renderTrips(k){
         <div><label class="flb">¿De dónde salen los km?</label><input class="fin" value="${esc(t.notes)}" placeholder="Ej. Google Maps SPS–Omoa 45 km × 2" onchange="setTrip('${k}',${i},'notes',this.value)"/></div>
       </div>`:''}
       ${(t.route_id||t.custom)?`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--soft);flex-wrap:wrap">
-        <span>${kmf(a.ida)} ida/vuelta + ${kmf(a.per)} × ${a.days} día${a.days===1?'':'s'} en la ciudad = <strong>${kmf(a.km)} km</strong> × ${fmt(a.factor,cur)}${isWk(t.trip_date)?' · <span style="color:#B45309;font-weight:700">fin de semana</span>':''}${ch.length?`<br>Tramo medido desde ${esc(ch[ch.length-1].destino)}`:''}</span>
+        <span>${kmf(a.ida)} ida/vuelta + ${kmf(a.per)} × ${a.days} día${a.days===1?'':'s'} en la ciudad = <strong>${kmf(a.km)} km</strong> × ${fmtF(a.factor,cur)}${isWk(t.trip_date)?' · <span style="color:#B45309;font-weight:700">fin de semana</span>':''}${ch.length?`<br>Tramo medido desde ${esc(ch[ch.length-1].destino)}`:''}</span>
         <strong style="font-size:15px;color:var(--p)">${fmt(a.amount,cur)}</strong></div>`:''}
       ${iss[i].length?`<div style="font-size:12px;color:#B45309;font-weight:700;margin-top:6px">⚠️ ${iss[i].join(' · ')}</div>`:''}
     </div>`}).join('');
@@ -1895,7 +1896,7 @@ function renderTrips(k){
     <div style="font-size:13px;color:var(--soft);margin-bottom:10px">${help}</div>
     <div class="fg2" style="gap:10px;margin-bottom:10px">
       <div><label class="flb">Tu sede</label><select class="fse" onchange="setTripSede('${k}',this.value)">${sedes.map(x=>`<option value="${x.code}" ${x.code===s?'selected':''}>${esc(x.name)} (${x.code})</option>`).join('')}</select></div>
-      <div><label class="flb">Factor vigente</label><div class="fin" style="background:#F8FAFF">${fr?`${fmt(fr.factor,cur)} por km · desde ${fdate(fr.valid_from+'T12:00:00')}`:'Sin factor'}</div></div>
+      <div><label class="flb">Factor vigente</label><div class="fin" style="background:#F8FAFF">${fr?`${fmtF(fr.factor,cur)} por km · desde ${fdate(fr.valid_from+'T12:00:00')}`:'Sin factor'}</div></div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <button type="button" class="btn bgh btn-sm" onclick="addTrip('${k}','ciudad')">🏙️ + Día en ciudad</button>
@@ -1966,8 +1967,8 @@ function tripsViewHtml(trips,items,cur){
   const nm=t=>`${t.is_city?'🏙️':(t.custom?'✏️':'🚗')} ${esc(t.destino)}${t.custom?' <span class="badge" style="background:#FFEDD5;color:#9A3412">fuera del cuadro</span>':''}`;
   const dt=t=>`${t.trip_date}${t.date_to&&t.date_to!==t.trip_date?' → '+t.date_to:''}${!t.is_city&&t.dias_gira!=null?' · '+t.dias_gira+' día(s) en la ciudad':''}${isWk(t.trip_date)?' <small style="color:#B45309">(fin de semana)</small>':''}`;
   return`<div class="card" style="margin-bottom:12px"><div class="ch"><span class="ctitle">⛽ Rutas y combustible (${trips.length})</span></div>${head}
-    ${trips.length?`<div class="tw"><table><thead><tr><th>Fecha</th><th>Destino</th><th>Km</th><th>Factor</th><th>Reconocido</th><th>Nota</th></tr></thead><tbody>${trips.map(t=>`<tr><td>${dt(t)}</td><td>${nm(t)}</td><td>${kmf(t.km_total)}</td><td>${fmt(t.factor,cur)}</td><td><strong>${fmt(t.amount,cur)}</strong></td><td style="font-size:12px">${esc(t.notes)||'—'}</td></tr>`).join('')}</tbody></table></div>
-    <div class="mcl" style="padding:10px">${trips.map(t=>`<div class="mci"><div style="display:flex;justify-content:space-between;gap:8px"><div><div style="font-weight:700;font-size:14px">${nm(t)}</div><div style="font-size:12px;color:var(--soft)">${dt(t)} · ${kmf(t.km_total)} km × ${fmt(t.factor,cur)}</div>${t.notes?`<div style="font-size:12px;margin-top:3px">${esc(t.notes)}</div>`:''}</div><div style="font-size:16px;font-weight:800;white-space:nowrap">${fmt(t.amount,cur)}</div></div></div>`).join('')}</div>`:''}</div>`;
+    ${trips.length?`<div class="tw"><table><thead><tr><th>Fecha</th><th>Destino</th><th>Km</th><th>Factor</th><th>Reconocido</th><th>Nota</th></tr></thead><tbody>${trips.map(t=>`<tr><td>${dt(t)}</td><td>${nm(t)}</td><td>${kmf(t.km_total)}</td><td>${fmtF(t.factor,cur)}</td><td><strong>${fmt(t.amount,cur)}</strong></td><td style="font-size:12px">${esc(t.notes)||'—'}</td></tr>`).join('')}</tbody></table></div>
+    <div class="mcl" style="padding:10px">${trips.map(t=>`<div class="mci"><div style="display:flex;justify-content:space-between;gap:8px"><div><div style="font-weight:700;font-size:14px">${nm(t)}</div><div style="font-size:12px;color:var(--soft)">${dt(t)} · ${kmf(t.km_total)} km × ${fmtF(t.factor,cur)}</div>${t.notes?`<div style="font-size:12px;margin-top:3px">${esc(t.notes)}</div>`:''}</div><div style="font-size:16px;font-weight:800;white-space:nowrap">${fmt(t.amount,cur)}</div></div></div>`).join('')}</div>`:''}</div>`;
 }
 // Página Combustible: calculadora + tabla + administración
 async function loadFuelPage(){
@@ -1985,7 +1986,7 @@ function renderFuelTable(){
   const cur=fSede(FT_S)?.currency||'HNL',fr=fFactorRow(FT_S,today()),f=parseFloat(fr?.factor)||0;
   const rows=fRoutes(FT_S).map(r=>{const ch=viaChain(r.id),km=r.is_city?parseFloat(r.km_interno):[...ch,r].reduce((a,x)=>a+parseFloat(x.km_ida_retorno),0)+parseFloat(r.km_interno);return{r,ch,km,amt:r2(km*f)}});
   box.innerHTML=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${FUEL.sedes.map(x=>`<button type="button" class="btn btn-sm ${x.code===FT_S?'bsky':'bgh'}" onclick="FT_S='${x.code}';renderFuelTable()">${esc(x.name)}</button>`).join('')}</div>
-    <div style="font-size:12px;color:var(--soft);margin-bottom:8px">Factor ${fmt(f,cur)} por km${fr?' · vigente desde '+fdate(fr.valid_from+'T12:00:00'):''}. Giras: monto para 1 día; cada día adicional de gira suma ${kmf(GIRA_KM_DIA)} km (${fmt(r2(GIRA_KM_DIA*f),cur)}).</div>
+    <div style="font-size:12px;color:var(--soft);margin-bottom:8px">Factor ${fmtF(f,cur)} por km${fr?' · vigente desde '+fdate(fr.valid_from+'T12:00:00'):''}. Giras: monto para 1 día; cada día adicional de gira suma ${kmf(GIRA_KM_DIA)} km (${fmt(r2(GIRA_KM_DIA*f),cur)}).</div>
     ${rows.map(({r,ch,km,amt})=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--bd);font-size:14px"><div><strong>${r.is_city?'🏙️':'🚗'} ${esc(r.destino)}</strong><div style="font-size:12px;color:var(--soft)">${kmf(km)} km${ch.length?' · incluye tramo '+esc(ch.map(p=>p.destino).join(' → ')):''}${r.is_city?' por día':' · gira de 1 día'}</div></div><div style="font-weight:800;white-space:nowrap">${fmt(amt,cur)}</div></div>`).join('')}`;
 }
 let FT_S=null,FA_S=null;
@@ -2004,18 +2005,18 @@ async function renderFuelAdmin(){
      <div><label class="flb">Vigente desde</label><input class="fin" type="date" id="fa-d" value="${today()}"/></div>
      <div style="display:flex;align-items:flex-end"><button type="button" class="btn bp1" style="width:100%;justify-content:center" onclick="saveFactor()">Guardar factor</button></div>
    </div>
-   <div style="font-size:12px;color:var(--soft);margin-top:8px">Cada lunes: escribe el precio oficial de la gasolina regular para ${esc(fSede(s)?.name||s)} y la fecha del lunes. Factor = precio ÷ km por galón (redondeado a 2 decimales, igual que el cuadro).</div>
-   <div style="font-size:12px;margin-top:6px">${hist.map(h=>`${fdate(h.valid_from+'T12:00:00')}: <strong>${fmt(h.factor,cur)}</strong>/km${h.gallon_price?` (galón ${fmt(h.gallon_price,cur)} ÷ ${kmf(h.km_per_gallon)} km)`:''}`).join('<br>')}</div>
+   <div style="font-size:12px;color:var(--soft);margin-top:8px">Cada lunes: escribe el precio oficial de la gasolina regular para ${esc(fSede(s)?.name||s)} y la fecha del lunes. Factor = precio ÷ km por galón (2 decimales en lempiras, 4 en dólares, igual que el cuadro).</div>
+   <div style="font-size:12px;margin-top:6px">${hist.map(h=>`${fdate(h.valid_from+'T12:00:00')}: <strong>${fmtF(h.factor,cur)}</strong>/km${h.gallon_price?` (galón ${fmt(h.gallon_price,cur)} ÷ ${kmf(h.km_per_gallon)} km)`:''}`).join('<br>')}</div>
    <div class="sdiv">Sede y odómetro (km o millas) de cada colaborador</div>
    ${people.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--bd)"><span style="font-size:14px">${esc(p.full_name)} <small style="color:var(--soft)">${esc(p.country)}</small></span><span style="display:flex;gap:6px"><select class="fse" style="max-width:170px" onchange="setPersonSede('${p.id}',this.value)"><option value="">— Sin sede —</option>${FUEL.sedes.map(x=>`<option value="${x.code}" ${x.code===p.fuel_sede?'selected':''}>${esc(x.name)}</option>`).join('')}</select><select class="fse" style="max-width:110px" aria-label="Odómetro" onchange="setPersonUnit('${p.id}',this.value)"><option value="km" ${p.odometer_unit!=='mi'?'selected':''}>km</option><option value="mi" ${p.odometer_unit==='mi'?'selected':''}>millas</option></select></span></div>`).join('')||'<div style="font-size:13px;color:var(--soft)">Sin colaboradores</div>'}`;
 }
-function faCalc(){const g=parseMonto(vv('fa-gal')),k=parseMonto(vv('fa-kmg'));if(g>0&&k>0)document.getElementById('fa-f').value=(Math.round(g/k*100)/100).toFixed(2)}
+function faCalc(){const g=parseMonto(vv('fa-gal')),k=parseMonto(vv('fa-kmg'));if(g>0&&k>0)document.getElementById('fa-f').value=(fSede(FA_S)?.currency==='USD'?(Math.round(g/k*10000)/10000).toFixed(4):(Math.round(g/k*100)/100).toFixed(2))}
 async function saveFactor(){
   const f=parseMonto(vv('fa-f')),d=vv('fa-d'),g=parseMonto(vv('fa-gal')),k=parseMonto(vv('fa-kmg'));
   if(!(f>0&&f<100)){toast('Indica un factor válido (ej. 5.26)','err');return}
   if(!d){toast('Indica desde qué fecha aplica','err');return}
   const cur=fSede(FA_S)?.currency||'HNL',prev=fFactor(FA_S,d);
-  if(!confirm(`Nuevo factor ${fmt(f,cur)} por km para ${fSede(FA_S)?.name} desde ${d}${prev?` (antes ${fmt(prev,cur)})`:''}.\n\nAplica a las rutas con fecha desde ese día que se guarden a partir de ahora. ¿Guardar?`))return;
+  if(!confirm(`Nuevo factor ${fmtF(f,cur)} por km para ${fSede(FA_S)?.name} desde ${d}${prev?` (antes ${fmtF(prev,cur)})`:''}.\n\nAplica a las rutas con fecha desde ese día que se guarden a partir de ahora. ¿Guardar?`))return;
   ldr(true);
   try{await sb('fuel_factors?on_conflict=sede,valid_from',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{sede:FA_S,valid_from:d,factor:f,gallon_price:g>0?g:null,km_per_gallon:k>0?k:null,created_by:CU.id}});
     await loadFuel();toast('✓ Factor guardado','ok');renderFuelAdmin();renderWeek()}
@@ -2184,7 +2185,7 @@ function renderWeek(){
           ${WP_HIST.filter(h=>h.sede===WP.sede).length?`<select class="fse" style="flex:1;min-width:0;max-width:100%" onchange="wkHist(${i},this.value)"><option value="">↺ Repetir una gira anterior</option>${WP_HIST.map((h,k)=>h.sede===WP.sede?`<option value="${k}">${esc(h.stops.map(pName).join(' → '))}${h.end==='sede'?' → regreso':' · duerme en '+esc(pName(h.end))}</option>`:'').join('')}</select>`:''}</div>
         ${d.stops.length?`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><span style="font-size:12px;color:var(--soft);min-width:52px">Duerme en</span>${WP_ADDING&&WP_ADDING.i===i&&WP_ADDING.j==='end'?`<input class="fin" id="wk-new" placeholder="Ej. Talanga" style="flex:1;min-width:0"/><button type="button" class="btn bsky btn-sm" onclick="wkFind(${i},'end')">Buscar</button><button type="button" class="btn bgh btn-sm" onclick="WP_ADDING=null;renderWeek()">✕</button>`:`<select class="fse" style="flex:1;min-width:0" onchange="wkEnd(${i},this.value)"><option value="sede" ${d.end==='sede'?'selected':''}>Regresa a ${esc(pName(sp))}</option>${placeOpts(d.end==='sede'?'':d.end,sp).replace('<option value="">Elige el lugar</option>','')}</select>`}</div>`:''}
       `:''}
-      ${c.lines.length?`<div style="font-size:12px;color:var(--soft);border-top:1px solid var(--bd);padding-top:6px;margin-top:4px">${c.lines.map(l=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:1px 0"><span>${esc(l.t)}${l.pend?' <span class="badge" style="background:#E0F2FE;color:#075985">calculando…</span>':''}${l.unver?' <span class="badge" style="background:#FFEDD5;color:#9A3412">tramo nuevo</span>':''}</span><span style="white-space:nowrap">${l.km==null?'…':kmf(l.km)+' km'}</span></div>`).join('')}<div style="display:flex;justify-content:space-between;margin-top:3px;color:inherit"><span>${kmf(c.km)} km × ${fmt(C.factor,cur)}</span><strong>${fmt(c.amt,cur)}</strong></div></div>`:(d.k==='libre'?'<div style="font-size:12px;color:var(--soft)">Vacaciones, oficina o día sin recorrido</div>':'')}
+      ${c.lines.length?`<div style="font-size:12px;color:var(--soft);border-top:1px solid var(--bd);padding-top:6px;margin-top:4px">${c.lines.map(l=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:1px 0"><span>${esc(l.t)}${l.pend?' <span class="badge" style="background:#E0F2FE;color:#075985">calculando…</span>':''}${l.unver?' <span class="badge" style="background:#FFEDD5;color:#9A3412">tramo nuevo</span>':''}</span><span style="white-space:nowrap">${l.km==null?'…':kmf(l.km)+' km'}</span></div>`).join('')}<div style="display:flex;justify-content:space-between;margin-top:3px;color:inherit"><span>${kmf(c.km)} km × ${fmtF(C.factor,cur)}</span><strong>${fmt(c.amt,cur)}</strong></div></div>`:(d.k==='libre'?'<div style="font-size:12px;color:var(--soft)">Vacaciones, oficina o día sin recorrido</div>':'')}
     </div>`}).join('');
   box.innerHTML=`
     <div class="tcard" style="position:sticky;top:calc(56px + env(safe-area-inset-top,0px));z-index:3;margin-bottom:12px">
@@ -2195,7 +2196,7 @@ function renderWeek(){
         return`<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px"><div><div style="font-size:12px;opacity:.8">Total de la semana</div><div style="font-size:28px;font-weight:800;font-family:'DM Sans',sans-serif">${fmt(tot,cur)}</div></div><div style="font-size:15px;font-weight:700">${kmf(C.km)} km</div></div>
         ${ls.length>1||ls.some(x=>x.key!=='ciudad')?`<div style="margin-top:8px;border-top:1px solid rgba(255,255,255,.25);padding-top:6px">${ls.map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:2px 0"><span>⛽ ${x.key==='ciudad'?'Lunes':WK_DN[(new Date(x.when+'T12:00:00').getDay()+6)%7]} ${niceD(x.when)} · ${esc(x.label)}</span><strong style="white-space:nowrap">${fmt(x.pay,cur)}</strong></div>`).join('')}</div>`:''}
         ${WP.credit?`<div style="font-size:12px;opacity:.9;margin-top:4px">Incluye descuento de ${fmt(WP.credit,cur)}: saldo a favor de la empresa de la semana del ${niceD(WP.creditWeek)}</div>`:''}`})()}
-      <div style="font-size:12px;opacity:.85">${C.missing.length?'Calculando distancias nuevas…':`Factor ${fmt(C.factor,cur)}/km${fr?' · vigente desde '+fdate(fr.valid_from+'T12:00:00'):''}`}${C.unver?` · ${C.unver} tramo(s) nuevo(s) por validar`:''}</div>
+      <div style="font-size:12px;opacity:.85">${C.missing.length?'Calculando distancias nuevas…':`Factor ${fmtF(C.factor,cur)}/km${fr?' · vigente desde '+fdate(fr.valid_from+'T12:00:00'):''}`}${C.unver?` · ${C.unver} tramo(s) nuevo(s) por validar`:''}</div>
     </div>
     <div class="fg2" style="gap:10px;margin-bottom:10px">
       <div><label class="flb">Sede</label>${lockSede?`<div class="fin" style="background:#F8FAFF">${esc(fSede(WP.sede)?.name||WP.sede)}</div>`:`<select class="fse" onchange="wkSede(this.value)">${sedes.map(s=>`<option value="${s.code}" ${s.code===WP.sede?'selected':''}>${esc(s.name)}</option>`).join('')}</select>`}</div>
