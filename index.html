@@ -451,6 +451,17 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#F8FAFF}
       <div class="card"><div class="cb" id="rs-list"></div></div>
     </div>
 
+    <!-- SOLICITUDES -->
+    <div id="page-solicitudes" class="page">
+      <div class="ph">
+        <div><div class="ph-title">Solicitudes</div><div class="ph-sub">Aprobación previa de inversión y gastos fuera de gira</div></div>
+        <div class="ph-act"><button class="btn bp1 btn-lg" onclick="openReq()"><svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Nueva solicitud</button></div>
+      </div>
+      <div class="tabs" id="rq-tabs"></div>
+      <div id="rq-sum"></div>
+      <div id="rq-list"></div>
+    </div>
+
     <!-- POLÍTICA -->
     <div id="page-combustible" class="page">
       <div class="ph"><div><div class="ph-title">Combustible</div><div class="ph-sub">Planifica tu semana y sabe cuánto cargar el lunes</div></div></div>
@@ -668,6 +679,37 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#F8FAFF}
   </div>
 </div>
 
+<div class="mo" id="mo-req">
+  <div class="mob" style="max-width:640px">
+    <div class="moh"><span class="mot" id="rq-t">Nueva solicitud</span><button class="mox" onclick="closeMo('mo-req')">×</button></div>
+    <div class="mob2" id="rq-b"></div>
+    <div class="mof" style="gap:8px"><button class="btn bgh" onclick="closeMo('mo-req')">Cancelar</button><button class="btn bgh" onclick="saveReq('borrador')">Guardar borrador</button><button class="btn bok" onclick="saveReq('enviado')">Enviar para aprobación</button></div>
+  </div>
+</div>
+<div class="mo" id="mo-reqv">
+  <div class="mob" style="max-width:720px">
+    <div class="moh"><span class="mot" id="rqv-t">Solicitud</span><button class="mox" onclick="closeMo('mo-reqv')">×</button></div>
+    <div class="mob2" id="rqv-b"></div>
+    <div class="mof" id="rqv-f" style="gap:8px;flex-wrap:wrap"></div>
+  </div>
+</div>
+<div class="mo" id="mo-reqap">
+  <div class="mob" style="max-width:480px">
+    <div class="moh"><span class="mot" id="rqa-t">Aprobar solicitud</span><button class="mox" onclick="closeMo('mo-reqap')">×</button></div>
+    <div class="mob2">
+      <div id="rqa-info" style="background:#F8FAFF;border-radius:var(--rs);padding:14px;margin-bottom:14px"></div>
+      <div id="rqa-amtw" style="margin-bottom:12px"><label class="flb">Monto que apruebas</label><input class="fin" id="rqa-amt" inputmode="decimal"/><div id="rqa-cur" style="font-size:12px;color:var(--soft);margin-top:4px"></div></div>
+      <label class="flb">Comentarios</label>
+      <textarea class="fta" id="rqa-cmt"></textarea>
+      <div id="rqa-sw" style="margin-top:10px;font-size:13px"></div>
+    </div>
+    <div class="mof" style="gap:10px">
+      <button class="btn berr" id="rqa-rej" style="flex:1;justify-content:center" onclick="doReqAp()">✕ Confirmar rechazo</button>
+      <button class="btn bok" id="rqa-ok" style="flex:1;justify-content:center" onclick="doReqAp()">✓ Confirmar aprobación</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
 <div id="ldr" class="ldr"><div class="lsp"></div></div>
 <script>
@@ -839,6 +881,7 @@ function buildViolations(){
     if(nr){vs.push({type:'no_reimb',line:i+1,item:nr})}
     if(l.category==='representacion'&&!l.client_names){vs.push({type:'missing_client',line:i+1})}
   });
+  vs.push(...rqViolations());
   vs.push(...fuelViolations());
   return vs;
 }
@@ -847,7 +890,7 @@ function renderViolations(){
   const wrap=document.getElementById('violations-wrap');
   const sum=document.getElementById('violations-summary');
   if(!vs.length){if(wrap)wrap.innerHTML='';if(sum)sum.innerHTML='';return}
-  const crit=vs.some(v=>['exceeded','no_reimb','fuel_over'].includes(v.type));
+  const crit=vs.some(v=>['exceeded','no_reimb','fuel_over','no_request','no_request_hcp','request_over'].includes(v.type));
   const html=`<div class="viol-box ${crit?'critical':''}">
     <div class="viol-title ${crit?'critical':''}">⚠️ ${vs.length} alerta(s) de política</div>
     <ul class="viol-list ${crit?'critical':''}">${vs.map(v=>{
@@ -855,6 +898,9 @@ function renderViolations(){
       if(v.type==='weekend')return`<li>Línea ${v.line}: Combustible en fin de semana — requiere autorización previa</li>`;
       if(v.type==='no_reimb')return`<li>Línea ${v.line}: Posible gasto no reconocido ("${v.item}")</li>`;
       if(v.type==='missing_client')return`<li>Línea ${v.line}: Representación sin nombre de cliente (obligatorio §4.4)</li>`;
+      if(v.type==='no_request')return`<li>Línea ${v.line}: ${CAT[v.cat]} sin solicitud aprobada (pestaña Solicitudes)</li>`;
+      if(v.type==='no_request_hcp')return`<li>Atención ${v.line}: atención a médicos sin solicitud aprobada</li>`;
+      if(v.type==='request_over')return`<li>${v.code}: lo liquidado supera lo aprobado en ${fmt(v.diff,v.cur)}</li>`;
       if(v.type==='fuel_over')return`<li>⛽ El combustible cargado supera en ${fmt(v.diff,v.cur)} lo reconocido por tus rutas (pestaña ⛽ Rutas)</li>`;
       if(v.type==='fuel_no_routes')return`<li>⛽ Hay cargas de combustible pero no registraste tus rutas (pestaña ⛽ Rutas)</li>`;
       return'';
@@ -970,6 +1016,7 @@ const iM=`<svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="
 const iD=`<svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>`;
 const iU=`<svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>`;
 const iR=`<svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>`;
+const iQ=`<svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>`;
 const iP=`<svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4zm2 2H5V5h14v14zm0-16H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>`;
 
 // ── INIT APP ──
@@ -980,11 +1027,11 @@ function initApp(){
   document.getElementById('sb-rp').innerHTML=pills[CU.role]||'';
   const isV=CU.role==='visitador',isJ=CU.role==='jefe_visitador',isGD=CU.role==='gerente_distrito',isCtrl=CU.role==='controller';
   let nav=[];
-  if(isV) nav=[{i:iE,l:'Mis Gastos',p:'mis-gastos'},{i:iF,l:'Combustible',p:'combustible'},{i:iP,l:'Política',p:'politica'}];
-  else if(isJ) nav=[{i:iE,l:'Mis Gastos',p:'mis-gastos'},{i:iC,l:'Aprobaciones',p:'aprobaciones',b:true},{i:iD,l:'Dashboard',p:'dashboard'},{i:iU,l:'Colaboradores',p:'usuarios'},{i:iR,l:'Resets',p:'resets',b:true},{i:iF,l:'Combustible',p:'combustible'},{i:iP,l:'Política',p:'politica'}];
-  else if(isGD) nav=[{i:iE,l:'Mis Gastos',p:'mis-gastos'},{i:iD,l:'Dashboard',p:'dashboard'},{i:iC,l:'Aprobaciones',p:'aprobaciones',b:true},{i:iU,l:'Colaboradores',p:'usuarios'},{i:iR,l:'Resets',p:'resets',b:true},{i:iF,l:'Combustible',p:'combustible'},{i:iP,l:'Política',p:'politica'}];
-  else if(isCtrl) nav=[{i:iD,l:'Dashboard',p:'dashboard'},{i:iE,l:'Mis Gastos',p:'mis-gastos'},{i:iC,l:'Aprobaciones',p:'aprobaciones',b:true},{i:iM,l:'Reembolsos',p:'reembolsos',b:true},{i:iU,l:'Colaboradores',p:'usuarios'},{i:iF,l:'Combustible',p:'combustible'},{i:iP,l:'Política',p:'politica'}];
-  else nav=[{i:iD,l:'Dashboard',p:'dashboard'},{i:iC,l:'Aprobaciones',p:'aprobaciones',b:true},{i:iE,l:'Mis Gastos',p:'mis-gastos'},{i:iM,l:'Reembolsos',p:'reembolsos',b:true},{i:iU,l:'Colaboradores',p:'usuarios'},{i:iR,l:'Resets',p:'resets',b:true},{i:iF,l:'Combustible',p:'combustible'},{i:iP,l:'Política',p:'politica'}];
+  if(isV) nav=[{i:iE,l:'Mis Gastos',p:'mis-gastos'},{i:iQ,l:'Solicitudes',p:'solicitudes',b:true},{i:iF,l:'Combustible',p:'combustible'},{i:iP,l:'Política',p:'politica'}];
+  else if(isJ) nav=[{i:iE,l:'Mis Gastos',p:'mis-gastos'},{i:iC,l:'Aprobaciones',p:'aprobaciones',b:true},{i:iQ,l:'Solicitudes',p:'solicitudes',b:true},{i:iD,l:'Dashboard',p:'dashboard'},{i:iU,l:'Colaboradores',p:'usuarios'},{i:iR,l:'Resets',p:'resets',b:true},{i:iF,l:'Combustible',p:'combustible'},{i:iP,l:'Política',p:'politica'}];
+  else if(isGD) nav=[{i:iE,l:'Mis Gastos',p:'mis-gastos'},{i:iC,l:'Aprobaciones',p:'aprobaciones',b:true},{i:iQ,l:'Solicitudes',p:'solicitudes',b:true},{i:iD,l:'Dashboard',p:'dashboard'},{i:iU,l:'Colaboradores',p:'usuarios'},{i:iR,l:'Resets',p:'resets',b:true},{i:iF,l:'Combustible',p:'combustible'},{i:iP,l:'Política',p:'politica'}];
+  else if(isCtrl) nav=[{i:iD,l:'Dashboard',p:'dashboard'},{i:iE,l:'Mis Gastos',p:'mis-gastos'},{i:iC,l:'Aprobaciones',p:'aprobaciones',b:true},{i:iQ,l:'Solicitudes',p:'solicitudes',b:true},{i:iM,l:'Reembolsos',p:'reembolsos',b:true},{i:iU,l:'Colaboradores',p:'usuarios'},{i:iF,l:'Combustible',p:'combustible'},{i:iP,l:'Política',p:'politica'}];
+  else nav=[{i:iD,l:'Dashboard',p:'dashboard'},{i:iC,l:'Aprobaciones',p:'aprobaciones',b:true},{i:iQ,l:'Solicitudes',p:'solicitudes',b:true},{i:iE,l:'Mis Gastos',p:'mis-gastos'},{i:iM,l:'Reembolsos',p:'reembolsos',b:true},{i:iU,l:'Colaboradores',p:'usuarios'},{i:iR,l:'Resets',p:'resets',b:true},{i:iF,l:'Combustible',p:'combustible'},{i:iP,l:'Política',p:'politica'}];
   document.getElementById('sb-nav').innerHTML=nav.map(n=>`<div class="ni" data-p="${n.p}" onclick="showP('${n.p}',this)">${n.i}<span>${n.l}</span>${n.b?`<span class="nbadge" id="badge-${n.p}" style="display:none">!</span>`:''}</div>`).join('');
   document.getElementById('bn-items').innerHTML=nav.slice(0,4).map(n=>`<button class="bni-i" data-p="${n.p}" onclick="showP('${n.p}',this)">${n.i.replace('width="16"','width="21"').replace('height="16"','height="21"')}<span>${n.l.split(' ')[0]}</span>${n.b?`<span class="bnbadge" id="bnbadge-${n.p}" style="display:none">!</span>`:''}</button>`).join('');
   showP(nav[0].p,document.querySelector('.ni'));
@@ -997,7 +1044,7 @@ function showP(page,el){
   document.querySelectorAll('.ni,.bni-i').forEach(n=>n.classList.remove('on'));
   document.getElementById('page-'+page).classList.add('on');
   document.querySelectorAll(`[data-p="${page}"]`).forEach(n=>n.classList.add('on'));
-  const titles={dashboard:'Dashboard','mis-gastos':'Mis Gastos',aprobaciones:'Aprobaciones',reembolsos:'Reembolsos',usuarios:'Colaboradores',resets:'Resets',politica:'Política',combustible:'Combustible'};
+  const titles={dashboard:'Dashboard','mis-gastos':'Mis Gastos',aprobaciones:'Aprobaciones',reembolsos:'Reembolsos',usuarios:'Colaboradores',resets:'Resets',politica:'Política',combustible:'Combustible',solicitudes:'Solicitudes'};
   document.getElementById('tb-title').textContent=titles[page]||'Casa Ferne';
   document.getElementById('tb-act').style.display=page==='mis-gastos'?'flex':'none';
   if(page==='dashboard')loadDash();
@@ -1008,6 +1055,7 @@ function showP(page,el){
   if(page==='resets')loadResets();
   if(page==='politica')renderPolicy();
   if(page==='combustible')loadFuelPage();
+  if(page==='solicitudes')loadReqs();
   closeSB();
 }
 function showCutBanner(){
@@ -1028,6 +1076,9 @@ async function updBadges(){
     const ap=ap0.filter(x=>canAp(x));
     ['badge-aprobaciones','bnbadge-aprobaciones'].forEach(id=>{const el=document.getElementById(id);if(el){el.style.display=ap.length>0?'inline':'none';el.textContent=ap.length}});
     ['badge-resets','bnbadge-resets'].forEach(id=>{const el=document.getElementById(id);if(el){el.style.display=rs.length>0?'inline':'none';el.textContent=rs.length}});
+    {let n=0;try{const rq=await sb(`expense_requests?select=id,user_id,status,expense_profiles!expense_requests_user_id_fkey(role)&status=in.(enviado,aprobado_distrito)`);n=rq.filter(canApReq).length;
+      if(canPayReq())n+=(await sb('expense_requests?select=id&status=eq.aprobado&payment_mode=in.(anticipo,proveedor)&paid_at=is.null')).length}catch(_){}
+     ['badge-solicitudes','bnbadge-solicitudes'].forEach(id=>{const el=document.getElementById(id);if(el){el.style.display=n>0?'inline':'none';el.textContent=n}});}
     if(['controller','gerente_general'].includes(CU.role)){const rb=await sb('expense_reports?select=id&status=eq.aprobado_general&reimburse_amount=gt.0&reimbursed_at=is.null');
       ['badge-reembolsos','bnbadge-reembolsos'].forEach(id=>{const el=document.getElementById(id);if(el){el.style.display=rb.length>0?'inline':'none';el.textContent=rb.length}});}
   }catch(_){}
@@ -1167,7 +1218,7 @@ function setRC(v){
 function officeTabs(){const tabs=document.querySelectorAll('#mo-report .tabs .tab');tabs.forEach(t=>{const h=(t.getAttribute('onclick')||'').includes("'t-h'");if(h)t.style.display=isOffice()?'none':''})}
 function openNewRep(){
   officeTabs();
-  CRid=null;EL=[];HL=[];TR=[];TRS=null;RC=CU.country;
+  CRid=null;EL=[];HL=[];TR=[];TRS=null;RC=CU.country;RQ.savedHere={};loadMyReqs().then(()=>{rEL();rHL();renderViolations()});
   const _ct=document.getElementById('r-ct');if(_ct){_ct.value=['Honduras','El Salvador','Europa','Internacional'].includes(RC)?RC:'Honduras';_ct.disabled=false;if(_ct.value!==RC)RC=_ct.value}
   document.getElementById('mo-r-t').textContent='Registrar Gastos del Período';
   const n=new Date();
@@ -1196,8 +1247,9 @@ async function editRep(id){
     document.getElementById('r-adv').value=r.advance_amount||0;
     const cur=rcur();
     document.getElementById('adv-sym').textContent=SYM[cur]||'';
-    EL=await sb(`expense_items?report_id=eq.${id}&order=expense_date.asc`);
-    HL=(await sb(`hcp_attentions?report_id=eq.${id}&order=attention_date.asc`)).map(normH);
+    EL=await sb(`expense_items?report_id=eq.${id}&order=expense_date.asc`);EL.forEach(l=>l._saved=l.amount);
+    HL=(await sb(`hcp_attentions?report_id=eq.${id}&order=attention_date.asc`)).map(h=>normH({...h,_saved:h.amount}));
+    await loadMyReqs();rqSavedHere();
     await loadTrips(id);
     rEL();rHL();renderTrips('TR');renderViolations();
     document.querySelectorAll('#mo-report .tab').forEach((t,i)=>i===0?t.classList.add('on'):t.classList.remove('on'));
@@ -1290,11 +1342,11 @@ async function uploadReceipt(rid,l){
   if(!r.ok){let m='';try{m=(await r.json()).message||''}catch(_){}throw new Error('No se pudo subir la foto de la factura'+(m?': '+m:''))}
   return path;
 }
-async function openReceipt(path){
+async function openReceipt(path,bucket='recibos'){
   const box=document.getElementById('img-box');box.innerHTML='<div style="padding:40px;text-align:center;color:#fff">Cargando…</div>';
   document.getElementById('img-open').onclick=null;openMo('mo-img');
   try{
-    const call=()=>fetch(SB+'/storage/v1/object/sign/recibos/'+path,{method:'POST',headers:{'apikey':SK,'Authorization':'Bearer '+AUTH.access_token,'Content-Type':'application/json'},body:JSON.stringify({expiresIn:600})});
+    const call=()=>fetch(SB+'/storage/v1/object/sign/'+bucket+'/'+path,{method:'POST',headers:{'apikey':SK,'Authorization':'Bearer '+AUTH.access_token,'Content-Type':'application/json'},body:JSON.stringify({expiresIn:600})});
     let r=await call();
     if(r.status===401){await refreshSession();r=await call()}
     const j=await r.json();
@@ -1400,6 +1452,7 @@ function rEL(){
         ${isComb?`<div><label class="flb">Odómetro del vehículo (al cargar)</label><div style="display:flex;gap:6px"><input class="fin" type="number" inputmode="decimal" min="0" step="1" value="${l.odometer_km??''}" placeholder="lo que marca ahora" style="flex:1;min-width:0" onchange="EL[${i}].odometer_km=this.value===''?'':parseFloat(this.value)"/><select class="fse" style="flex:0 0 92px" aria-label="Unidad del odómetro" onchange="EL[${i}].odometer_unit=this.value"><option value="km" ${odoU(l)==='km'?'selected':''}>km</option><option value="mi" ${odoU(l)==='mi'?'selected':''}>millas</option></select></div></div>`:''}
         ${isRep?`<div class="ffc"><label class="flb">Nombre(s) del cliente atendido ⚠️ Obligatorio</label><input class="fin ${!l.client_names?'over':''}" type="text" value="${esc(l.client_names)}" placeholder="Dr. Juan García, Hospital XYZ, Director Médico" onchange="EL[${i}].client_names=this.value;renderViolations()"/></div>
         <div class="ffc"><label class="flb">Empresa / Institución del cliente</label><input class="fin" type="text" value="${esc(l.client_company)}" placeholder="Hospital Nacional, Clínica..." onchange="EL[${i}].client_company=this.value"/></div>`:''}
+        ${rqSel('EL',i)}
         ${l.weekend_flag?`<div class="ffc"><label class="flb">Autorización fin de semana</label><select class="fse" onchange="EL[${i}].weekend_authorized=this.value==='1';renderViolations()"><option value="0">Sin autorización previa</option><option value="1" ${l.weekend_authorized?'selected':''}>Gira autorizada por Gerencia</option></select></div>`:''}
       </div>
     </div>`;
@@ -1413,7 +1466,7 @@ function normH(d={}){
   return syncH({attention_date:d.attention_date||today(),city:d.city||'',activity_type:d.activity_type||'',amount:d.amount||0,notes:d.notes||'',
     vendor:d.vendor||'',invoice_number:d.invoice_number||'',attendees:at,payment_method:d.payment_method||'corporativa',
     img_preview:d.img_preview||null,img_is_pdf:d.img_is_pdf||false,invoice_image_url:d.invoice_image_url||null,
-    ev_preview:d.ev_preview||null,event_image_url:d.event_image_url||null,confidence:d.confidence||{}});
+    ev_preview:d.ev_preview||null,event_image_url:d.event_image_url||null,confidence:d.confidence||{},request_id:d.request_id||null,_saved:d._saved});
 }
 function syncH(h){ // columnas resumen para vistas, Odoo y reportes
   const ok=h.attendees.filter(a=>(a.name||'').trim());
@@ -1484,7 +1537,8 @@ function rHL(){
       <div><label class="flb">Ciudad</label><input class="fin" type="text" value="${esc(h.city)}" placeholder="Ciudad" onchange="HL[${i}].city=this.value"/></div>
       <div><label class="flb">Objetivo de actividad</label><select class="fse" onchange="HL[${i}].activity_type=this.value"><option value="">Selecciona objetivo</option>${Object.entries(OBJ_ACT).map(([k,vl])=>`<option value="${k}" ${h.activity_type===k?'selected':''}>${vl}</option>`).join('')}</select></div>
       ${paySel('HL',i)}
-      <div><label class="flb">Monto total de la factura${tag('monto')}</label><div class="cpfx"><span>${sym}</span><input type="text" inputmode="decimal" value="${h.amount}" placeholder="0.00" onchange="HL[${i}].amount=parseMonto(this.value);this.value=HL[${i}].amount;updSum()"/></div></div>
+      ${rqSel('HL',i)}
+      <div><label class="flb">Monto total de la factura${tag('monto')}</label><div class="cpfx"><span>${sym}</span><input type="text" inputmode="decimal" value="${h.amount}" placeholder="0.00" onchange="HL[${i}].amount=parseMonto(this.value);this.value=HL[${i}].amount;updSum();if(HL[${i}].request_id){rHL();renderViolations()}"/></div></div>
     </div>
     <div style="margin:12px 0 6px;font-size:12px;font-weight:800;color:var(--soft);text-transform:uppercase">Profesionales atendidos</div>
     ${ats}
@@ -1668,6 +1722,7 @@ async function saveRep(status){
         if(!(km>=0)){toast('Línea '+(k+1)+' (combustible): falta lo que marca el odómetro al cargar (política 4.3)','err');return}
       }
     }
+    {const rv=rqViolations();if(rv.length&&!confirm('📝 Gastos sin solicitud aprobada o por encima de lo aprobado:\n'+rv.map(v=>v.type==='request_over'?'• '+v.code+': excede '+fmt(v.diff,v.cur):(v.type==='no_request_hcp'?'• Atención '+v.line:'• Línea '+v.line+' ('+CAT[v.cat]+')')).join('\n')+'\n\nTu jefe verá esta alerta al revisar. ¿Enviar de todas formas?'))return}
     for(let k=0;k<HL.length;k++){syncH(HL[k]);if(!HL[k].hcp_name){toast('Atención '+(k+1)+': agrega el nombre de al menos un profesional atendido','err');return}}
     const advV=parseMonto(vv('r-adv'));
     for(let k=0;k<EL.length;k++){const l=EL[k];if(pm(l)==='propio'&&!l.no_invoice&&!(l.img_preview||l.invoice_image_url)){toast('Línea '+(k+1)+': pagaste con tu dinero; adjunta la foto del comprobante para el reembolso','err');return}}
@@ -1711,13 +1766,13 @@ async function saveRep(status){
         l.invoice_image_url=await uploadReceipt(rid,{img_preview:makeNoInvImage(l,rid),vendor:'comprobante sin factura'});
       }else if(l.img_preview&&!l.invoice_image_url){l.invoice_image_url=await uploadReceipt(rid,l)}
     }
-    if(EL.length)await sb('expense_items',{method:'POST',prefer:'return=minimal',body:EL.map(l=>({report_id:rid,payment_method:pm(l),no_invoice:!!l.no_invoice,no_invoice_reason:l.no_invoice?(l.no_invoice_reason||null):null,evidence_image_url:l.no_invoice?(l.evidence_image_url||null):null,invoice_image_url:l.invoice_image_url||null,expense_date:l.expense_date,category:l.category,subcategory:l.subcategory||null,description:l.description,vendor:l.vendor,amount:parseFloat(l.amount)||0,invoice_number:l.invoice_number,city:l.city,currency:rcur(),tipo_gasto:tipoEf(l),odometer_km:(l.category==='combustible'&&l.odometer_km!==''&&l.odometer_km!=null)?parseFloat(l.odometer_km):null,odometer_unit:l.category==='combustible'?odoU(l):'km',client_names:l.client_names||null,client_company:l.client_company||null,weekend_flag:l.weekend_flag||false,weekend_authorized:l.weekend_authorized||false,ai_extracted:l.ai_extracted||false,policy_exceeded:checkPolicy(l).exceeded,policy_max:checkPolicy(l).limit}))});
+    if(EL.length)await sb('expense_items',{method:'POST',prefer:'return=minimal',body:EL.map(l=>({report_id:rid,request_id:RQ_CATS.includes(l.category)?(l.request_id||null):null,payment_method:pm(l),no_invoice:!!l.no_invoice,no_invoice_reason:l.no_invoice?(l.no_invoice_reason||null):null,evidence_image_url:l.no_invoice?(l.evidence_image_url||null):null,invoice_image_url:l.invoice_image_url||null,expense_date:l.expense_date,category:l.category,subcategory:l.subcategory||null,description:l.description,vendor:l.vendor,amount:parseFloat(l.amount)||0,invoice_number:l.invoice_number,city:l.city,currency:rcur(),tipo_gasto:tipoEf(l),odometer_km:(l.category==='combustible'&&l.odometer_km!==''&&l.odometer_km!=null)?parseFloat(l.odometer_km):null,odometer_unit:l.category==='combustible'?odoU(l):'km',client_names:l.client_names||null,client_company:l.client_company||null,weekend_flag:l.weekend_flag||false,weekend_authorized:l.weekend_authorized||false,ai_extracted:l.ai_extracted||false,policy_exceeded:checkPolicy(l).exceeded,policy_max:checkPolicy(l).limit}))});
     for(const h of HL){
       syncH(h);
       if(h.img_preview&&!h.invoice_image_url){h.invoice_image_url=await uploadReceipt(rid,h)}
       if(h.ev_preview&&!h.event_image_url){h.event_image_url=await uploadReceipt(rid,{img_preview:h.ev_preview,vendor:'foto del evento'})}
     }
-    if(HL.length)await sb('hcp_attentions',{method:'POST',prefer:'return=minimal',body:HL.map(h=>({report_id:rid,payment_method:pm(h),attention_date:h.attention_date,hcp_name:h.hcp_name||'—',hcp_type:h.hcp_type,specialty:h.specialty,institution:h.institution,city:h.city,activity_type:h.activity_type,amount:parseFloat(h.amount)||0,notes:h.notes,vendor:h.vendor||null,invoice_number:h.invoice_number||null,invoice_image_url:h.invoice_image_url||null,event_image_url:h.event_image_url||null,attendees:h.attendees.filter(a=>(a.name||'').trim())}))});
+    if(HL.length)await sb('hcp_attentions',{method:'POST',prefer:'return=minimal',body:HL.map(h=>({report_id:rid,request_id:h.request_id||null,payment_method:pm(h),attention_date:h.attention_date,hcp_name:h.hcp_name||'—',hcp_type:h.hcp_type,specialty:h.specialty,institution:h.institution,city:h.city,activity_type:h.activity_type,amount:parseFloat(h.amount)||0,notes:h.notes,vendor:h.vendor||null,invoice_number:h.invoice_number||null,invoice_image_url:h.invoice_image_url||null,event_image_url:h.event_image_url||null,attendees:h.attendees.filter(a=>(a.name||'').trim())}))});
     await saveTrips(rid);
     await sb(`expense_reports?id=eq.${rid}`,{method:'PATCH',prefer:'return=minimal',body:{...rData,status}});
     closeMo('mo-report');
@@ -2396,6 +2451,7 @@ async function viewRep(id){
     let trips=[];if(FUEL_LIQ&&FUEL.ok){try{trips=await sb(`report_trips?report_id=eq.${id}&order=trip_date.asc,created_at.asc`)}catch(_){}}
     const ep=r.expense_profiles,cur=r.currency;
     let cross='';if(FUEL.ok&&FUEL.sedes.some(s=>s.country===r.country)&&items.some(i=>i.category==='combustible')){try{if(!FUEL.legsOk)await loadLegs();cross=fuelCrossHtml(await fuelCross(r.user_id,r.period_year,r.period_month,r.cycle),cur)}catch(_){}}
+    const rqh=await rqReportHtml(items,hcps,cur).catch(()=>'');
     document.getElementById('mv-t').textContent=`${MON[r.period_month]} ${r.period_year} · ${ep?.full_name||'—'}`;
     const excItems=items.filter(i=>i.policy_exceeded);
     document.getElementById('mv-b').innerHTML=`
@@ -2411,6 +2467,7 @@ async function viewRep(id){
         </div>`:''}
       </div>
       ${excItems.length?`<div class="viol-box critical" style="margin-bottom:14px"><div class="viol-title critical">⚠️ ${excItems.length} línea(s) exceden tope de política</div><ul class="viol-list critical">${excItems.map(i=>`<li>${CAT[i.category]} (${ALIM_SUB[i.subcategory]||''}): ${fmt(i.amount,cur)} — tope ${fmt(i.policy_max,cur)}</li>`).join('')}</ul></div>`:''}
+      ${rqh}
       ${items.length?`<div class="card" style="margin-bottom:12px"><div class="ch"><span class="ctitle">💰 Gastos de Viaje (${items.length})</span></div><div class="tw"><table><thead><tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th>Proveedor</th><th>Factura</th><th>Comprobante</th><th>Ciudad</th><th>Pago</th><th>Monto</th><th>Política</th></tr></thead><tbody>${items.map(i=>`<tr ${i.policy_exceeded?'style="background:#FFF5F5"':''}><td>${i.expense_date}</td><td><span class="cb2 c${i.category.substring(0,2)}">${CAT[i.category]||i.category}${i.subcategory?` (${ALIM_SUB[i.subcategory]||i.subcategory})`:''}</span></td><td>${i.description||'—'}</td><td>${i.vendor||'—'}${i.client_names?`<br><small style="color:var(--soft)">Cliente: ${i.client_names}</small>`:''}</td><td>${i.invoice_number||'—'}</td><td>${i.no_invoice?`<span class="badge" style="background:#FFEDD5;color:#9A3412">📄 Sin factura</span><br><small style="color:#9A3412">${NOINV_REASON[i.no_invoice_reason]||''}</small><br>${i.invoice_image_url?`<button type="button" class="btn bgh btn-sm" onclick="openReceipt('${i.invoice_image_url}')">📄 Comprobante</button>`:''}${i.evidence_image_url?` <button type="button" class="btn bgh btn-sm" onclick="openReceipt('${i.evidence_image_url}')">📷 Evidencia</button>`:''}`:(i.invoice_image_url?`<button type="button" class="btn bgh btn-sm" onclick="openReceipt('${i.invoice_image_url}')">📎 Ver</button>`:'<span style="color:var(--err);font-size:11px;font-weight:700">Sin foto</span>')}</td><td>${i.city||'—'}</td><td style="white-space:nowrap;font-size:12px">${PAY_SHORT[pm(i)]}</td><td><strong>${fmt(i.amount,cur)}</strong></td><td>${i.policy_exceeded?`<span class="badge br">⚠️ Excede</span>`:'<span class="badge ba">✓</span>'}</td></tr>`).join('')}</tbody></table></div><div class="mcl" style="padding:10px">${items.map(i=>itemCardM(i,cur)).join('')}</div></div>`:''}
       ${FUEL_LIQ&&FUEL.ok&&FUEL.sedes.some(s=>s.country===r.country)?tripsViewHtml(trips,items,cur):''}
       ${cross}
@@ -2627,6 +2684,338 @@ async function doApproval(action){
   ldr(false);
 }
 
+
+// ── 📝 SOLICITUDES DE INVERSIÓN / GASTO (aprobación previa) ──
+// Todo gasto que no sea de gira, combustible o parqueo/peaje necesita una solicitud aprobada:
+// el colaborador la pide → jefe inmediato (Ricardo) → Gerencia General. Luego la liquida con sus facturas.
+const RQ_TIPO={medicos:'👨‍⚕️ Inversión en médicos',marca:'🏷️ Eventos y marca',operativo:'🧰 Gastos operativos'};
+const RQ_SUB={
+  medicos:{congreso_int:'Congreso internacional',congreso_nac:'Congreso nacional',cena:'Cena o desayuno científico',mesa:'Mesa redonda',patrocinio:'Patrocinio o inscripción',atenciones:'Atenciones a médicos (presupuesto del período)',otro:'Otro'},
+  marca:{stand:'Stand o feria',material:'Material promocional',club:'Club Nutribén',digital:'Actividad digital',otro:'Otro'},
+  operativo:{suministros:'Suministros y materiales',mantenimiento:'Reparación y mantenimiento',servicios:'Servicios',equipo:'Equipo o mobiliario',otro:'Otro'}};
+const RQ_PAY={tarjeta:'💳 Tarjeta corporativa',anticipo:'💵 Anticipo',proveedor:'🏦 Pago directo a proveedor'};
+const RQ_ST={borrador:['bd','Borrador'],enviado:['bs','Enviada'],aprobado_distrito:['bp','Aprobada Jefe'],aprobado:['ba','Aprobada ✓'],rechazado:['br','Rechazada'],cancelado:['bd','Cancelada'],cerrada:['bd','Cerrada']};
+const RQ_COUNTRIES=['Honduras','El Salvador','Nicaragua','Costa Rica','Europa','Internacional'];
+// Categorías de la liquidación que deben ir ligadas a una solicitud aprobada (las atenciones a médicos también)
+const RQ_CATS=['representacion','suministros','mantenimiento'];
+const rqBadge=s=>{const[c,l]=RQ_ST[s]||['bd',s];return`<span class="badge ${c}">${l}</span>`};
+const rqCode=q=>'SOL-'+String(q.folio).padStart(4,'0');
+const rqAmt=q=>+(q.approved_amount??q.amount)||0;
+const rqOwnerRole=q=>q.expense_profiles?.role;
+const RQ_SEL='*,expense_profiles!expense_requests_user_id_fkey(full_name,role,country)';
+let RQ={tab:null,list:[],use:{},edit:null,mine:[],mineUse:{},savedHere:{},apId:null,apMode:'aprobar',filter:''};
+
+function canApReq(q){
+  if(!CU||q.user_id===CU.id)return false;
+  const o=rqOwnerRole(q);
+  if(MGR.includes(CU.role))return q.status==='enviado'&&o==='visitador';
+  if(CU.role==='gerente_general')return q.status==='aprobado_distrito'||(q.status==='enviado'&&(MGR.includes(o)||o==='controller'));
+  if(CU.role==='controller')return q.status==='enviado'&&o==='gerente_general';
+  return false;
+}
+const canPayReq=()=>['controller','gerente_general'].includes(CU?.role);
+const isReqApprover=()=>MGR.includes(CU?.role)||['gerente_general','controller'].includes(CU?.role);
+function rqFlow(q){
+  const o=rqOwnerRole(q)||CU?.role;
+  const direct=o!=='visitador';
+  const who=o==='gerente_general'?'Controller':'Gerencia General';
+  const st=q.status;
+  const s1=['aprobado_distrito','aprobado','cerrada'].includes(st)||(direct&&['aprobado','cerrada'].includes(st));
+  const steps=[{l:'Enviada',done:!['borrador'].includes(st),act:st==='borrador'}];
+  if(!direct)steps.push({l:'Jefe inmediato',done:['aprobado_distrito','aprobado','cerrada'].includes(st),act:st==='enviado'});
+  steps.push({l:who,done:['aprobado','cerrada'].includes(st),act:direct?st==='enviado':st==='aprobado_distrito'});
+  return`<div class="afl">${steps.map(s=>`<div class="afs"><div class="afc ${s.done?'done':s.act?'act':''}">${s.done?'✓':s.act?'●':'○'}</div><div class="afl-lbl">${s.l}</div></div>`).join('')}</div>`;
+}
+async function rqUsage(ids){
+  const out={};if(!ids.length)return out;
+  try{(await sb('rpc/request_usage',{method:'POST',body:{ids}})).forEach(x=>out[x.request_id]={used:+x.used||0,lines:x.lines})}catch(_){}
+  return out;
+}
+function rqBar(q,used){
+  const tot=rqAmt(q),u=+used||0,pct=tot>0?Math.min(100,u/tot*100):0,over=u>tot+0.004;
+  return`<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--soft)"><span>Usado ${fmt(u,q.currency)} de ${fmt(tot,q.currency)}</span><strong style="color:${over?'var(--err)':'var(--p)'}">${over?'Excede '+fmt(u-tot,q.currency):'Disponible '+fmt(tot-u,q.currency)}</strong></div>
+    <div style="margin-top:4px;height:5px;border-radius:3px;background:var(--bd)"><div style="height:5px;border-radius:3px;width:${pct}%;background:${over?'var(--err)':'var(--ok)'}"></div></div></div>`;
+}
+
+// ── Página ──
+function rqTabs(){
+  const t=[['mias','Mis solicitudes']];
+  if(isReqApprover())t.push(['aprobar','Por aprobar']);
+  if(canPayReq())t.push(['pagar','Por pagar']);
+  if(isReqApprover())t.push(['equipo','Todas']);
+  if(!RQ.tab||!t.some(x=>x[0]===RQ.tab))RQ.tab=t.length>1&&isReqApprover()&&CU.role!=='visitador'?'aprobar':'mias';
+  document.getElementById('rq-tabs').innerHTML=t.map(([k,l])=>`<div class="tab ${RQ.tab===k?'on':''}" onclick="RQ.tab='${k}';loadReqs()">${l}</div>`).join('');
+}
+async function loadReqs(){
+  rqTabs();ldr(true);
+  const box=document.getElementById('rq-list'),sum=document.getElementById('rq-sum');
+  try{
+    let q=`expense_requests?select=${RQ_SEL}&order=created_at.desc`;
+    if(RQ.tab==='mias')q+=`&user_id=eq.${CU.id}`;
+    else if(RQ.tab==='aprobar')q+='&status=in.(enviado,aprobado_distrito)';
+    else if(RQ.tab==='pagar')q+='&status=eq.aprobado&payment_mode=in.(anticipo,proveedor)&paid_at=is.null';
+    else{q+='&status=neq.borrador&limit=300';if(RQ.filter)q+=`&status=eq.${RQ.filter}`}
+    let rows=await sb(q);
+    if(RQ.tab==='aprobar')rows=rows.filter(canApReq);
+    RQ.list=rows;
+    RQ.use=await rqUsage(rows.filter(r=>['aprobado','cerrada'].includes(r.status)).map(r=>r.id));
+    // resumen
+    if(RQ.tab==='equipo'){
+      const by={};rows.filter(r=>['aprobado','cerrada'].includes(r.status)).forEach(r=>{const k=r.currency;by[k]=by[k]||{ap:0,used:0,n:0};by[k].ap+=rqAmt(r);by[k].used+=RQ.use[r.id]?.used||0;by[k].n++});
+      const pend=rows.filter(r=>['enviado','aprobado_distrito'].includes(r.status)).length;
+      sum.innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <select class="fin" style="width:auto;font-size:12px;padding:7px 10px" onchange="RQ.filter=this.value;loadReqs()"><option value="">Todos los estados</option>${['enviado','aprobado_distrito','aprobado','rechazado','cancelado','cerrada'].map(s=>`<option value="${s}" ${RQ.filter===s?'selected':''}>${RQ_ST[s][1]}</option>`).join('')}</select>
+        <span style="font-size:13px;color:var(--soft)">${pend} en aprobación</span></div>
+        ${Object.keys(by).length?`<div class="stats">${Object.entries(by).map(([c,v])=>`<div class="stat"><div class="stat-val" style="font-size:20px">${fmt(v.ap,c)}</div><div class="stat-lbl">Aprobado (${v.n} solicitud${v.n===1?'':'es'})</div><div style="font-size:12px;margin-top:4px;color:var(--soft)">Liquidado ${fmt(v.used,c)} · ${v.ap>0?Math.round(v.used/v.ap*100):0}%</div></div>`).join('')}</div>`:''}`;
+    }else if(RQ.tab==='mias'){
+      sum.innerHTML=`<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:var(--rs);padding:10px 12px;margin-bottom:12px;font-size:13px;color:#1E3A8A">Pide aprobación <strong>antes</strong> de gastar en médicos, eventos, material o gastos operativos. Gira, combustible y parqueo no necesitan solicitud. Cuando te la aprueben, liga tus facturas a la solicitud en tu liquidación.</div>`;
+    }else sum.innerHTML='';
+    if(!rows.length){box.innerHTML=`<div class="card"><div class="cb"><div class="empty"><h3>${RQ.tab==='aprobar'?'Todo al día':RQ.tab==='pagar'?'Nada por pagar':'Sin solicitudes'}</h3><p>${RQ.tab==='mias'?'Usa “Nueva solicitud” para pedir una aprobación':''}</p></div></div></div>`;ldr(false);updBadges();return}
+    box.innerHTML=rows.map(rqCard).join('');
+  }catch(e){toast('Error: '+e.message,'err')}
+  ldr(false);updBadges();
+}
+function rqCard(q){
+  const mine=q.user_id===CU.id,u=RQ.use[q.id]?.used||0;
+  const btns=[`<button class="btn bgh btn-sm" onclick="viewReq('${q.id}')">Ver</button>`];
+  if(mine&&['borrador','rechazado'].includes(q.status))btns.push(`<button class="btn bp1 btn-sm" onclick="openReq('${q.id}')">${q.status==='rechazado'?'Corregir y reenviar':'Editar'}</button>`);
+  if(canApReq(q))btns.push(`<button class="btn berr btn-sm" onclick="openReqAp('${q.id}','rechazar')">Rechazar</button><button class="btn bok btn-sm" onclick="openReqAp('${q.id}','aprobar')">✓ Aprobar</button>`);
+  if(RQ.tab==='pagar'&&canPayReq())btns.push(`<button class="btn bok btn-sm" onclick="payReq('${q.id}')">${q.payment_mode==='anticipo'?'💵 Anticipo entregado':'🏦 Proveedor pagado'}</button>`);
+  return`<div class="card" style="margin-bottom:10px"><div class="ch" style="align-items:flex-start;gap:10px;flex-wrap:wrap">
+    <div style="flex:1 1 240px;min-width:0">
+      <div style="font-weight:800;font-size:14px">${rqCode(q)} · ${esc(q.title)}</div>
+      <div style="font-size:12px;color:var(--soft);margin-top:3px">${mine?'':`<strong>${esc(q.expense_profiles?.full_name||'—')}</strong> · `}${RQ_TIPO[q.tipo]||q.tipo}${q.subtipo?' · '+esc(RQ_SUB[q.tipo]?.[q.subtipo]||q.subtipo):''}${q.event_date?' · 📅 '+fdate(q.event_date+'T12:00:00'):''}</div>
+      <div style="font-size:12px;margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${rqBadge(q.status)}<span style="font-size:15px;font-weight:800;color:var(--p)">${fmt(rqAmt(q),q.currency)}</span>${q.approved_amount!=null&&+q.approved_amount<+q.amount?`<span style="color:var(--soft);text-decoration:line-through">${fmt(q.amount,q.currency)}</span>`:''}<span style="color:var(--soft)">${RQ_PAY[q.payment_mode]||''}</span>${q.paid_at?'<span class="badge ba">pagado</span>':''}</div>
+      ${['aprobado','cerrada'].includes(q.status)?rqBar(q,u):''}
+      ${q.status==='rechazado'&&(q.general_comments||q.district_comments)?`<div style="margin-top:6px;font-size:12px;color:#991B1B">Motivo: ${esc(q.general_comments||q.district_comments)}</div>`:''}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${btns.join('')}</div></div></div>`;
+}
+
+// ── Formulario ──
+function rqSubOpts(t,sel){return`<option value="">— elegir —</option>`+Object.entries(RQ_SUB[t]||{}).map(([k,v])=>`<option value="${k}" ${sel===k?'selected':''}>${v}</option>`).join('')}
+function rqTipoChg(){const t=vv('rq-tipo');document.getElementById('rq-sub').innerHTML=rqSubOpts(t,'');document.getElementById('rq-ben-l').textContent=t==='medicos'?'Médicos o institución beneficiada ⚠️':(t==='marca'?'Evento, institución o público':'Área o equipo que lo necesita');}
+function rqCurChg(){document.getElementById('rq-sym').textContent=(SYM[CUR[vv('rq-ct')]]||'').trim()+' '+(CUR[vv('rq-ct')]||'')}
+async function openReq(id){
+  let q=null;
+  if(id){try{q=(await sb(`expense_requests?id=eq.${id}&select=*`))[0]}catch(e){toast('Error: '+e.message,'err');return}}
+  RQ.edit=q;RQ.quote=null;
+  const ct=q?.country||(RQ_COUNTRIES.includes(CU.country)?CU.country:'Honduras'),t=q?.tipo||(isOffice()?'operativo':'medicos');
+  document.getElementById('rq-t').textContent=q?`${rqCode(q)} · ${q.status==='rechazado'?'Corregir y reenviar':'Editar solicitud'}`:'Nueva solicitud';
+  document.getElementById('rq-b').innerHTML=`
+    ${q?.status==='rechazado'?`<div class="viol-box critical" style="margin-bottom:14px"><div class="viol-title critical">Rechazada: ${esc(q.general_comments||q.district_comments||'')}</div><div style="font-size:12px">Corrige lo necesario y vuelve a enviarla.</div></div>`:''}
+    <div class="fg2">
+      <div><label class="flb">Tipo de gasto</label><select class="fse" id="rq-tipo" onchange="rqTipoChg()">${Object.entries(RQ_TIPO).map(([k,v])=>`<option value="${k}" ${t===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div><label class="flb">Detalle</label><select class="fse" id="rq-sub">${rqSubOpts(t,q?.subtipo)}</select></div>
+      <div class="ffc"><label class="flb">¿Qué necesitas? ⚠️</label><input class="fin" id="rq-title" maxlength="120" value="${esc(q?.title)}" placeholder="Ej.: Cena científica con pediatras del Hospital Escuela"/></div>
+      <div class="ffc"><label class="flb">Justificación: objetivo y resultado esperado ⚠️</label><textarea class="fta" id="rq-just" placeholder="¿Para qué es? ¿Qué esperas lograr (prescripción, relación, educación)? ¿Por qué ahora?">${esc(q?.justification)}</textarea></div>
+      <div class="ffc"><label class="flb" id="rq-ben-l">${t==='medicos'?'Médicos o institución beneficiada ⚠️':(t==='marca'?'Evento, institución o público':'Área o equipo que lo necesita')}</label><input class="fin" id="rq-ben" value="${esc(q?.beneficiaries)}" placeholder="Dr. García, Dra. López · Hospital Escuela"/></div>
+      <div><label class="flb">Fecha del gasto o evento</label><input class="fin" type="date" id="rq-d1" value="${q?.event_date||''}"/></div>
+      <div><label class="flb">Hasta (si dura varios días)</label><input class="fin" type="date" id="rq-d2" value="${q?.event_end||''}"/></div>
+      <div><label class="flb">País / moneda</label><select class="fse" id="rq-ct" onchange="rqCurChg()">${RQ_COUNTRIES.map(c=>`<option value="${c}" ${ct===c?'selected':''}>${FLG[c]||''} ${c} (${CUR[c]})</option>`).join('')}</select></div>
+      <div><label class="flb">Monto que solicitas ⚠️</label><div style="display:flex;gap:6px;align-items:center"><span id="rq-sym" style="font-weight:800;color:var(--p);white-space:nowrap">${(SYM[CUR[ct]]||'').trim()} ${CUR[ct]}</span><input class="fin" id="rq-amt" inputmode="decimal" value="${q?.amount??''}" placeholder="0.00"/></div></div>
+      <div><label class="flb">¿Cómo se pagará?</label><select class="fse" id="rq-pay">${Object.entries(RQ_PAY).map(([k,v])=>`<option value="${k}" ${(q?.payment_mode||'tarjeta')===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div><label class="flb">Proveedor (si ya lo sabes)</label><input class="fin" id="rq-vendor" value="${esc(q?.vendor)}" placeholder="Restaurante, hotel, imprenta..."/></div>
+      <div class="ffc"><label class="flb">Cotización o programa (opcional)</label><div id="rq-qbox">${rqQuoteBox()}</div></div>
+    </div>`;
+  openMo('mo-req');
+}
+function rqQuoteBox(){
+  const has=RQ.quote||RQ.edit?.quote_url;
+  return`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    ${RQ.quote?`<span style="font-size:13px">📎 ${esc(RQ.quote.name)} ✓</span>`:RQ.edit?.quote_url?`<button type="button" class="btn bgh btn-sm" onclick="openReceipt('${RQ.edit.quote_url}','solicitudes')">📎 Ver cotización</button>`:''}
+    <label class="btn bgh btn-sm" style="cursor:pointer;display:inline-flex">${has?'Cambiar':'📎 Adjuntar foto o PDF'}<input type="file" accept="image/*,application/pdf" onchange="rqPickQuote(this)" style="display:none"/></label></div>`;
+}
+async function rqPickQuote(input){
+  const f=input.files[0];if(!f)return;input.value='';
+  try{
+    if(f.type.includes('pdf')){if(f.size>8*1024*1024)throw new Error('el PDF pesa más de 8 MB');RQ.quote={name:f.name,data:'data:application/pdf;base64,'+await toB64(f)}}
+    else{const c=await compressImage(f);RQ.quote={name:f.name,data:'data:image/jpeg;base64,'+c.b64}}
+    document.getElementById('rq-qbox').innerHTML=rqQuoteBox();
+  }catch(e){toast('No se pudo adjuntar: '+e.message,'err')}
+}
+async function uploadQuote(rid,dataUrl){
+  const blob=dataUrlToBlob(dataUrl);
+  const ext=blob.type==='application/pdf'?'pdf':'jpg';
+  const path=rid+'/'+(crypto.randomUUID?crypto.randomUUID():Date.now())+'.'+ext;
+  const up=()=>fetch(SB+'/storage/v1/object/solicitudes/'+path,{method:'POST',headers:{'apikey':SK,'Authorization':'Bearer '+AUTH.access_token,'Content-Type':blob.type,'x-upsert':'false'},body:blob});
+  let r=await up();if(r.status===401){await refreshSession();r=await up()}
+  if(!r.ok){let m='';try{m=(await r.json()).message||''}catch(_){}throw new Error('No se pudo subir la cotización'+(m?': '+m:''))}
+  return path;
+}
+async function saveReq(status){
+  const tipo=vv('rq-tipo'),title=vv('rq-title').trim(),just=vv('rq-just').trim(),ben=vv('rq-ben').trim(),amt=parseMonto(vv('rq-amt')),d1=vv('rq-d1')||null,d2=vv('rq-d2')||null;
+  if(status==='enviado'){
+    if(!title){toast('Escribe qué necesitas','err');return}
+    if(just.length<15){toast('Explica el objetivo y el resultado esperado (justificación)','err');return}
+    if(!(amt>0)){toast('Indica el monto que solicitas','err');return}
+    if(tipo==='medicos'&&!ben){toast('Indica los médicos o la institución beneficiada','err');return}
+    if(tipo!=='operativo'&&!d1){toast('Indica la fecha del evento o del gasto','err');return}
+  }else if(!title){toast('Escribe al menos qué necesitas para guardar el borrador','err');return}
+  if(d1&&d2&&d2<d1){toast('La fecha final es anterior a la inicial','err');return}
+  const body={tipo,subtipo:vv('rq-sub')||null,title,justification:just||'—',beneficiaries:ben||null,event_date:d1,event_end:d2,country:vv('rq-ct'),amount:amt>0?amt:0.01,payment_mode:vv('rq-pay'),vendor:vv('rq-vendor').trim()||null};
+  ldr(true);
+  try{
+    let id=RQ.edit?.id;
+    // se guarda primero como borrador para poder subir la cotización; luego se envía
+    if(!id){const r=await sb('expense_requests',{method:'POST',body:{...body,status:'borrador'}});id=r[0].id;RQ.edit=r[0]}
+    else await sb(`expense_requests?id=eq.${id}`,{method:'PATCH',prefer:'return=minimal',body:{...body,status:RQ.edit.status==='rechazado'?'rechazado':'borrador'}});
+    if(RQ.quote){const p=await uploadQuote(id,RQ.quote.data);await sb(`expense_requests?id=eq.${id}`,{method:'PATCH',prefer:'return=minimal',body:{quote_url:p}})}
+    if(status==='enviado'){await sb(`expense_requests?id=eq.${id}`,{method:'PATCH',prefer:'return=minimal',body:{status:'enviado'}});notifyReq(id)}
+    closeMo('mo-req');RQ.tab='mias';
+    toast(status==='enviado'?'✓ Solicitud enviada para aprobación':'✓ Borrador guardado','ok');
+    loadReqs();
+  }catch(e){toast('Error: '+e.message,'err')}
+  ldr(false);
+}
+function notifyReq(id){callFn('notify',{action:'request',request_id:id}).catch(e=>console.warn('aviso no enviado',e))}
+
+// ── Detalle ──
+async function viewReq(id){
+  ldr(true);
+  try{
+    const q=(await sb(`expense_requests?id=eq.${id}&select=${RQ_SEL}`))[0];
+    const[its,hcs,use]=await Promise.all([
+      sb(`expense_items?request_id=eq.${id}&select=expense_date,category,description,vendor,amount,expense_reports(status,period_month,period_year,cycle)&order=expense_date.asc`).catch(()=>[]),
+      sb(`hcp_attentions?request_id=eq.${id}&select=attention_date,hcp_name,vendor,amount,expense_reports(status,period_month,period_year,cycle)&order=attention_date.asc`).catch(()=>[]),
+      rqUsage([id])]);
+    const lines=[...its.map(i=>({d:i.expense_date,t:(CAT[i.category]||i.category)+(i.description?' · '+i.description:''),v:i.vendor,a:i.amount,r:i.expense_reports})),...hcs.map(h=>({d:h.attention_date,t:'👨‍⚕️ '+(h.hcp_name||''),v:h.vendor,a:h.amount,r:h.expense_reports}))].sort((a,b)=>(a.d||'').localeCompare(b.d||''));
+    const cur=q.currency,u=use[id]?.used||0,mine=q.user_id===CU.id;
+    const row=(l,v)=>v?`<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--bd);font-size:13px"><div style="flex:0 0 130px;color:var(--soft)">${l}</div><div style="flex:1;min-width:0">${v}</div></div>`:'';
+    document.getElementById('rqv-t').textContent=`${rqCode(q)} · ${q.title}`;
+    document.getElementById('rqv-b').innerHTML=`
+      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">${rqBadge(q.status)}<span style="font-size:12px;color:var(--soft)">${FLG[q.country]||''} ${q.country} · ${cur}</span>${q.paid_at?`<span class="badge ba">${q.payment_mode==='anticipo'?'Anticipo entregado':'Proveedor pagado'} ${fdate(q.paid_at)}${q.paid_ref?' · Ref. '+esc(q.paid_ref):''}</span>`:''}</div>
+      ${['borrador','cancelado'].includes(q.status)?'':rqFlow(q)}
+      <div class="tcard" style="margin-bottom:14px"><div style="font-size:11px;opacity:.75">${q.approved_amount!=null?'Monto aprobado':'Monto solicitado'}</div>
+        <div style="font-size:28px;font-weight:800;font-family:'DM Sans',sans-serif">${fmt(rqAmt(q),cur)}</div>
+        ${q.approved_amount!=null&&+q.approved_amount!==+q.amount?`<div style="font-size:13px;opacity:.85">Solicitado: ${fmt(q.amount,cur)}</div>`:''}</div>
+      ${row('Solicita',esc(q.expense_profiles?.full_name||'—'))}
+      ${row('Tipo',(RQ_TIPO[q.tipo]||q.tipo)+(q.subtipo?' · '+esc(RQ_SUB[q.tipo]?.[q.subtipo]||q.subtipo):''))}
+      ${row('Justificación',esc(q.justification).replace(/\n/g,'<br>'))}
+      ${row(q.tipo==='medicos'?'Beneficiarios':'Para',esc(q.beneficiaries))}
+      ${row('Fecha',q.event_date?fdate(q.event_date+'T12:00:00')+(q.event_end&&q.event_end!==q.event_date?' al '+fdate(q.event_end+'T12:00:00'):''):'')}
+      ${row('Pago',RQ_PAY[q.payment_mode])}
+      ${row('Proveedor',esc(q.vendor))}
+      ${row('Cotización',q.quote_url?`<button type="button" class="btn bgh btn-sm" onclick="openReceipt('${q.quote_url}','solicitudes')">📎 Ver</button>`:'')}
+      ${row('Enviada',q.submitted_at?fdate(q.submitted_at):'')}
+      ${q.district_comments?`<div style="margin-top:10px;padding:10px;background:#FEF9C3;border-radius:var(--rs);font-size:13px"><strong>Jefe inmediato:</strong> ${esc(q.district_comments)}</div>`:''}
+      ${q.general_comments?`<div style="margin-top:8px;padding:10px;background:#EDE9FE;border-radius:var(--rs);font-size:13px"><strong>${rqOwnerRole(q)==='gerente_general'?'Controller':'Gerencia General'}:</strong> ${esc(q.general_comments)}</div>`:''}
+      ${['aprobado','cerrada'].includes(q.status)?`<div class="card" style="margin-top:14px"><div class="ch"><span class="ctitle">Gastos liquidados contra esta solicitud (${lines.length})</span></div><div class="cb">${rqBar(q,u)}
+        ${lines.length?`<div style="margin-top:10px">${lines.map(l=>`<div style="display:flex;gap:8px;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd);font-size:13px"><div style="min-width:0">${l.d||''} · ${esc(l.t)}${l.v?' · '+esc(l.v):''}<div style="font-size:11px;color:var(--soft)">Liquidación ${l.r?MON[l.r.period_month]+' '+l.r.period_year:''} ${l.r?sbadge(l.r.status):''}</div></div><strong>${fmt(l.a,cur)}</strong></div>`).join('')}</div>`:'<div style="font-size:13px;color:var(--soft);margin-top:8px">Todavía no se liquidan gastos. En tu liquidación, elige esta solicitud en cada factura que corresponda.</div>'}</div></div>`:''}`;
+    const f=[];
+    if(canApReq(q))f.push(`<button class="btn berr" onclick="closeMo('mo-reqv');openReqAp('${q.id}','rechazar')">Rechazar</button><button class="btn bok" onclick="closeMo('mo-reqv');openReqAp('${q.id}','aprobar')">✓ Aprobar</button>`);
+    if(mine&&['borrador','rechazado'].includes(q.status))f.push(`<button class="btn bp1" onclick="closeMo('mo-reqv');openReq('${q.id}')">${q.status==='rechazado'?'Corregir y reenviar':'Editar'}</button>`);
+    if(mine&&q.status==='borrador')f.push(`<button class="btn bgh" onclick="delReq('${q.id}')">Eliminar</button>`);
+    if(mine&&['enviado','aprobado_distrito','aprobado','rechazado'].includes(q.status)&&!lines.length&&!q.paid_at)f.push(`<button class="btn bgh" onclick="cancelReq('${q.id}')">Cancelar solicitud</button>`);
+    if(canPayReq()&&q.status==='aprobado'&&['anticipo','proveedor'].includes(q.payment_mode)&&!q.paid_at)f.push(`<button class="btn bok" onclick="payReq('${q.id}')">${q.payment_mode==='anticipo'?'💵 Anticipo entregado':'🏦 Proveedor pagado'}</button>`);
+    if(canPayReq()&&q.status==='aprobado')f.push(`<button class="btn bgh" onclick="closeReq('${q.id}')">Cerrar solicitud</button>`);
+    f.push(`<button class="btn bgh" onclick="closeMo('mo-reqv')">Cerrar</button>`);
+    document.getElementById('rqv-f').innerHTML=f.join('');
+    openMo('mo-reqv');
+  }catch(e){toast('Error: '+e.message,'err')}
+  ldr(false);
+}
+async function delReq(id){if(!confirm('¿Eliminar este borrador?'))return;try{await sb(`expense_requests?id=eq.${id}`,{method:'DELETE',prefer:'return=minimal'});closeMo('mo-reqv');toast('Borrador eliminado','ok');loadReqs()}catch(e){toast('Error: '+e.message,'err')}}
+async function cancelReq(id){if(!confirm('¿Cancelar esta solicitud? Ya no se podrá usar para liquidar gastos.'))return;try{await sb(`expense_requests?id=eq.${id}`,{method:'PATCH',prefer:'return=minimal',body:{status:'cancelado'}});closeMo('mo-reqv');toast('Solicitud cancelada','ok');loadReqs()}catch(e){toast('Error: '+e.message,'err')}}
+async function payReq(id){
+  const q=RQ.list.find(x=>x.id===id);
+  const ref=prompt((q?.payment_mode==='proveedor'?'Pago al proveedor':'Entrega del anticipo')+'\nReferencia (transferencia, cheque, recibo):','');
+  if(ref===null)return;
+  ldr(true);try{await sb('rpc/mark_request_paid',{method:'POST',body:{rid:id,ref}});closeMo('mo-reqv');toast('✓ Pago registrado','ok');notifyReq(id);loadReqs()}catch(e){toast('Error: '+e.message,'err')}ldr(false);
+}
+async function closeReq(id){
+  if(!confirm('¿Cerrar la solicitud? Ya no se podrán ligar más gastos a ella (lo no usado queda libre).'))return;
+  ldr(true);try{await sb('rpc/close_request',{method:'POST',body:{rid:id}});closeMo('mo-reqv');toast('Solicitud cerrada','ok');loadReqs()}catch(e){toast('Error: '+e.message,'err')}ldr(false);
+}
+
+// ── Aprobación ──
+async function openReqAp(id,mode){
+  let q=RQ.list.find(x=>x.id===id);
+  try{q=(await sb(`expense_requests?id=eq.${id}&select=${RQ_SEL}`))[0]}catch(_){}
+  if(!q){toast('No se encontró la solicitud','err');return}
+  RQ.apId=id;RQ.apQ=q;rqApMode(mode);
+  document.getElementById('rqa-info').innerHTML=`<strong>${rqCode(q)} · ${esc(q.title)}</strong><br><span style="font-size:13px;color:var(--soft)">${esc(q.expense_profiles?.full_name||'')} · ${RQ_TIPO[q.tipo]||''}${q.event_date?' · '+fdate(q.event_date+'T12:00:00'):''} · ${RQ_PAY[q.payment_mode]||''}</span>
+    <div style="font-size:13px;margin-top:8px">${esc(q.justification).replace(/\n/g,'<br>')}</div>
+    ${q.beneficiaries?`<div style="font-size:13px;margin-top:6px"><strong>Para:</strong> ${esc(q.beneficiaries)}</div>`:''}
+    ${q.quote_url?`<div style="margin-top:8px"><button type="button" class="btn bgh btn-sm" onclick="openReceipt('${q.quote_url}','solicitudes')">📎 Ver cotización</button></div>`:''}
+    ${q.district_comments?`<div style="margin-top:8px;font-size:13px;background:#FEF9C3;padding:8px;border-radius:var(--rs)"><strong>Jefe inmediato:</strong> ${esc(q.district_comments)}</div>`:''}`;
+  document.getElementById('rqa-amt').value=rqAmt(q);
+  document.getElementById('rqa-cur').textContent=(SYM[q.currency]||'').trim()+' '+q.currency+' · solicitado '+fmt(q.amount,q.currency);
+  document.getElementById('rqa-cmt').value='';
+  openMo('mo-reqap');
+}
+function rqApMode(m){
+  RQ.apMode=m;const rej=m==='rechazar';
+  document.getElementById('rqa-t').textContent=rej?'Rechazar solicitud':'Aprobar solicitud';
+  document.getElementById('rqa-amtw').style.display=rej?'none':'';
+  document.getElementById('rqa-rej').style.display=rej?'':'none';
+  document.getElementById('rqa-ok').style.display=rej?'none':'';
+  document.getElementById('rqa-cmt').placeholder=rej?'Motivo del rechazo (obligatorio): qué debe corregir':'Comentario (opcional)';
+  document.getElementById('rqa-sw').innerHTML=rej?`<a href="#" onclick="rqApMode('aprobar');return false">Cambiar a aprobación</a>`:`<a href="#" style="color:var(--err)" onclick="rqApMode('rechazar');return false">¿Rechazarla? Cambiar a rechazo</a>`;
+}
+async function doReqAp(){
+  const q=RQ.apQ,rej=RQ.apMode==='rechazar',cmt=vv('rqa-cmt').trim();
+  if(rej&&!cmt){toast('Escribe el motivo del rechazo','err');return}
+  const body={};
+  const isJefe=MGR.includes(CU.role);
+  if(rej)body.status='rechazado';
+  else{
+    const a=parseMonto(vv('rqa-amt'));
+    if(!(a>0)||a>+q.amount+0.004){toast('El monto aprobado debe ser mayor que cero y no mayor que lo solicitado ('+fmt(q.amount,q.currency)+')','err');return}
+    body.status=isJefe?'aprobado_distrito':'aprobado';body.approved_amount=a;
+  }
+  body[isJefe?'district_comments':'general_comments']=cmt||null;
+  ldr(true);
+  try{await sb(`expense_requests?id=eq.${RQ.apId}`,{method:'PATCH',prefer:'return=minimal',body});notifyReq(RQ.apId);closeMo('mo-reqap');
+    toast(rej?'Solicitud rechazada':(isJefe?'✓ Aprobada; pasa a Gerencia General':'✓ Solicitud aprobada'),rej?'err':'ok');loadReqs()}
+  catch(e){if(/no permitida/i.test(e.message)){closeMo('mo-reqap');toast('La solicitud ya cambió de estado. Se actualizó la lista.','err');loadReqs()}else toast('Error: '+e.message,'err')}
+  ldr(false);
+}
+
+// ── En la liquidación: ligar facturas a solicitudes aprobadas ──
+async function loadMyReqs(){
+  RQ.mine=[];RQ.mineUse={};
+  try{RQ.mine=await sb(`expense_requests?user_id=eq.${CU.id}&status=eq.aprobado&select=id,folio,title,amount,approved_amount,currency,tipo&order=folio.desc`);RQ.mineUse=await rqUsage(RQ.mine.map(q=>q.id))}catch(_){}
+}
+function rqSavedHere(){ // lo que esta misma liquidación ya tenía guardado (para no contarlo dos veces)
+  RQ.savedHere={};[...EL,...HL].forEach(l=>{if(l.request_id&&l._saved)RQ.savedHere[l.request_id]=(RQ.savedHere[l.request_id]||0)+(parseFloat(l._saved)||0)});
+}
+function rqUsedHere(rid){return[...EL,...HL].filter(l=>l.request_id===rid).reduce((s,l)=>s+(parseFloat(l.amount)||0),0)}
+function rqLeft(q){const other=(RQ.mineUse[q.id]?.used||0)-(RQ.savedHere[q.id]||0);return rqAmt(q)-other-rqUsedHere(q.id)}
+function rqNeeds(l,isH){return isH||RQ_CATS.includes(l.category)}
+function rqSel(arr,i){
+  const l=(arr==='HL'?HL:EL)[i];if(!rqNeeds(l,arr==='HL'))return'';
+  const cur=rcur(),opts=RQ.mine.filter(q=>q.currency===cur);
+  const known=l.request_id&&!opts.some(q=>q.id===l.request_id);
+  return`<div class="ffc"><label class="flb">Solicitud aprobada ${l.request_id?'':'<span style="color:var(--err)">⚠️ requerida</span>'}</label>
+    <select class="fse ${l.request_id?'':'over'}" onchange="${arr}[${i}].request_id=this.value||null;${arr==='HL'?'rHL()':'rEL()'};renderViolations()">
+      <option value="">${opts.length?'— elegir la solicitud que cubre este gasto —':'No tienes solicitudes aprobadas en '+cur}</option>
+      ${known?`<option value="${l.request_id}" selected>Solicitud ya ligada (cerrada o de otro estado)</option>`:''}
+      ${opts.map(q=>{const left=rqLeft(q);return`<option value="${q.id}" ${l.request_id===q.id?'selected':''}>${rqCode(q)} · ${esc(q.title).slice(0,50)} · quedan ${fmt(left,cur)}</option>`}).join('')}
+    </select>${l.request_id&&!known?(()=>{const q=RQ.mine.find(x=>x.id===l.request_id);const left=q?rqLeft(q):0;return left< -0.004?`<div style="font-size:11px;color:var(--err);margin-top:3px">Supera lo aprobado en ${fmt(-left,cur)}</div>`:''})():''}</div>`;
+}
+function rqViolations(){
+  const vs=[];
+  EL.forEach((l,i)=>{if(rqNeeds(l,false)&&!l.request_id)vs.push({type:'no_request',line:i+1,cat:l.category})});
+  HL.forEach((h,i)=>{if(!h.request_id)vs.push({type:'no_request_hcp',line:i+1})});
+  const ids=[...new Set([...EL,...HL].map(l=>l.request_id).filter(Boolean))];
+  ids.forEach(id=>{const q=RQ.mine.find(x=>x.id===id);if(q){const left=rqLeft(q);if(left< -0.004)vs.push({type:'request_over',code:rqCode(q),diff:-left,cur:q.currency})}});
+  return vs;
+}
+// Vista del aprobador: solicitudes que respaldan la liquidación
+async function rqReportHtml(items,hcps,cur){
+  const need=items.filter(i=>RQ_CATS.includes(i.category)).length+hcps.length;
+  const ids=[...new Set([...items,...hcps].map(x=>x.request_id).filter(Boolean))];
+  const sinSol=items.filter(i=>RQ_CATS.includes(i.category)&&!i.request_id).length+hcps.filter(h=>!h.request_id).length;
+  if(!need&&!ids.length)return'';
+  let reqs=[],use={};
+  if(ids.length){try{reqs=await sb(`expense_requests?id=in.(${ids.join(',')})&select=id,folio,title,amount,approved_amount,currency,status,tipo`);use=await rqUsage(ids)}catch(_){}}
+  return`<div class="card" style="margin-bottom:12px"><div class="ch"><span class="ctitle">📝 Solicitudes que respaldan estos gastos</span></div><div class="cb">
+    ${sinSol?`<div style="padding:8px 10px;border-radius:var(--rs);background:#FEF2F2;color:#991B1B;font-size:13px;margin-bottom:8px"><strong>⚠️ ${sinSol} gasto(s) sin solicitud aprobada</strong> (representación, atenciones a médicos u operativos)</div>`:''}
+    ${reqs.map(q=>{const here=[...items,...hcps].filter(x=>x.request_id===q.id).reduce((s,x)=>s+(+x.amount||0),0);return`<div style="padding:6px 0;border-bottom:1px solid var(--bd);font-size:13px"><a href="#" onclick="viewReq('${q.id}');return false"><strong>${rqCode(q)}</strong></a> · ${esc(q.title)} · en esta liquidación ${fmt(here,q.currency)}${rqBar(q,use[q.id]?.used||0)}</div>`}).join('')}
+  </div></div>`;
+}
+
 // ── USERS ──
 async function loadUsers(){
   ldr(true);
@@ -2763,6 +3152,15 @@ function renderPolicy(){
       <li>Registrar <strong>lo que marca el odómetro (en km o en millas, según el vehículo) cada vez que se carga combustible</strong> (obligatorio)</li>
       <li>No se reconocen combustibles en <strong>fines de semana</strong> sin autorización expresa</li>
       <li>Peajes y estacionamiento reconocidos con comprobante</li>
+    </ul>
+  </div></div>
+  <div class="card" style="margin-bottom:16px"><div class="ch"><span class="ctitle">4.4 Solicitud previa de inversión y gastos</span></div><div class="cb">
+    <ul style="font-size:13px;color:var(--soft);line-height:2;padding-left:16px">
+      <li>Todo gasto que <strong>no</strong> sea de gira (alimentación, hotel), combustible, parqueo o peaje necesita una <strong>solicitud aprobada antes de gastar</strong>: atenciones y eventos con médicos, congresos, patrocinios, material, eventos de marca y gastos operativos</li>
+      <li>Aprobación: <strong>jefe inmediato y luego Gerencia General</strong>. Las solicitudes del jefe y de Controller las aprueba Gerencia General; las de Gerencia General, Controller</li>
+      <li>Se puede pagar con tarjeta corporativa, con anticipo o directo al proveedor. Controller registra la entrega del anticipo o el pago</li>
+      <li>En la liquidación, cada factura de esos gastos se liga a su solicitud. Lo liquidado no debe superar lo aprobado</li>
+      <li>Una solicitud puede cubrir varias facturas, por ejemplo un presupuesto mensual de atenciones a médicos</li>
     </ul>
   </div></div>
   <div class="card" style="margin-bottom:16px"><div class="ch"><span class="ctitle">5. Gastos NO Reconocidos</span></div><div class="cb">
