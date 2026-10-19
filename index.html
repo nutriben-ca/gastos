@@ -2005,12 +2005,12 @@ async function renderFuelAdmin(){
      <div><label class="flb">Vigente desde</label><input class="fin" type="date" id="fa-d" value="${today()}"/></div>
      <div style="display:flex;align-items:flex-end"><button type="button" class="btn bp1" style="width:100%;justify-content:center" onclick="saveFactor()">Guardar factor</button></div>
    </div>
-   <div style="font-size:12px;color:var(--soft);margin-top:8px">Cada lunes: escribe el precio oficial de la gasolina regular para ${esc(fSede(s)?.name||s)} y la fecha del lunes. Factor = precio ÷ km por galón (2 decimales en lempiras, 3 en dólares, igual que el cuadro).</div>
+   <div style="font-size:12px;color:var(--soft);margin-top:8px">Cada lunes: escribe el precio oficial de la gasolina regular para ${esc(fSede(s)?.name||s)} y la fecha del lunes. Factor = precio ÷ km por galón (2 decimales en lempiras, 4 en dólares, igual que el cuadro).</div>
    <div style="font-size:12px;margin-top:6px">${hist.map(h=>`${fdate(h.valid_from+'T12:00:00')}: <strong>${fmtF(h.factor,cur)}</strong>/km${h.gallon_price?` (galón ${fmt(h.gallon_price,cur)} ÷ ${kmf(h.km_per_gallon)} km)`:''}`).join('<br>')}</div>
    <div class="sdiv">Sede y odómetro (km o millas) de cada colaborador</div>
    ${people.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--bd)"><span style="font-size:14px">${esc(p.full_name)} <small style="color:var(--soft)">${esc(p.country)}</small></span><span style="display:flex;gap:6px"><select class="fse" style="max-width:170px" onchange="setPersonSede('${p.id}',this.value)"><option value="">— Sin sede —</option>${FUEL.sedes.map(x=>`<option value="${x.code}" ${x.code===p.fuel_sede?'selected':''}>${esc(x.name)}</option>`).join('')}</select><select class="fse" style="max-width:110px" aria-label="Odómetro" onchange="setPersonUnit('${p.id}',this.value)"><option value="km" ${p.odometer_unit!=='mi'?'selected':''}>km</option><option value="mi" ${p.odometer_unit==='mi'?'selected':''}>millas</option></select></span></div>`).join('')||'<div style="font-size:13px;color:var(--soft)">Sin colaboradores</div>'}`;
 }
-function faCalc(){const g=parseMonto(vv('fa-gal')),k=parseMonto(vv('fa-kmg'));if(g>0&&k>0)document.getElementById('fa-f').value=(fSede(FA_S)?.currency==='USD'?(Math.round(g/k*1000)/1000).toFixed(3):(Math.round(g/k*100)/100).toFixed(2))}
+function faCalc(){const g=parseMonto(vv('fa-gal')),k=parseMonto(vv('fa-kmg'));if(g>0&&k>0)document.getElementById('fa-f').value=(fSede(FA_S)?.currency==='USD'?(Math.round(g/k*10000)/10000).toFixed(4):(Math.round(g/k*100)/100).toFixed(2))}
 async function saveFactor(){
   const f=parseMonto(vv('fa-f')),d=vv('fa-d'),g=parseMonto(vv('fa-gal')),k=parseMonto(vv('fa-kmg'));
   if(!(f>0&&f<100)){toast('Indica un factor válido (ej. 5.26)','err');return}
