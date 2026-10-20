@@ -1038,6 +1038,7 @@ function initApp(){
   updBadges();
   showCutBanner();
   refreshPushUI();
+  rqCheckLink();
 }
 function showP(page,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
@@ -2690,7 +2691,7 @@ async function doApproval(action){
 // el colaborador la pide → jefe inmediato (Ricardo) → Gerencia General. Luego la liquida con sus facturas.
 const RQ_TIPO={medicos:'👨‍⚕️ Inversión en médicos',marca:'🏷️ Eventos y marca',operativo:'🧰 Gastos operativos'};
 const RQ_SUB={
-  medicos:{congreso_int:'Congreso internacional',congreso_nac:'Congreso nacional',cena:'Cena o desayuno científico',mesa:'Mesa redonda',patrocinio:'Patrocinio o inscripción',atenciones:'Atenciones a médicos (presupuesto del período)',otro:'Otro'},
+  medicos:{oneone:'One to one',congreso_int:'Congreso internacional',congreso_nac:'Congreso nacional',cena:'Cena o desayuno científico',mesa:'Mesa redonda',patrocinio:'Patrocinio o inscripción',atenciones:'Atenciones a médicos (presupuesto del período)',otro:'Otro'},
   marca:{stand:'Stand o feria',material:'Material promocional',club:'Club Nutribén',digital:'Actividad digital',otro:'Otro'},
   operativo:{suministros:'Suministros y materiales',mantenimiento:'Reparación y mantenimiento',servicios:'Servicios',equipo:'Equipo o mobiliario',otro:'Otro'}};
 const RQ_PAY={tarjeta:'💳 Tarjeta corporativa',anticipo:'💵 Anticipo',proveedor:'🏦 Pago directo a proveedor'};
@@ -2703,6 +2704,21 @@ const rqCode=q=>'SOL-'+String(q.folio).padStart(4,'0');
 const rqAmt=q=>+(q.approved_amount??q.amount)||0;
 const rqOwnerRole=q=>q.expense_profiles?.role;
 const RQ_SEL='*,expense_profiles!expense_requests_user_id_fkey(full_name,role,country)';
+// Enlaces desde Plan de Acción: #sol=<datos> abre una solicitud prellenada; #ver=<id> abre una solicitud
+(function(){try{const h=location.hash||'';if(h.startsWith('#sol=')||h.startsWith('#ver=')){sessionStorage.setItem('cf_link',h.slice(1));history.replaceState(null,'',location.pathname+location.search)}}catch(_){}})();
+function rqDecode(b){b=b.replace(/-/g,'+').replace(/_/g,'/');while(b.length%4)b+='=';return JSON.parse(decodeURIComponent(escape(atob(b))))}
+async function rqCheckLink(){
+  let h=null;try{h=sessionStorage.getItem('cf_link');sessionStorage.removeItem('cf_link')}catch(_){}
+  if(!h)return;
+  const nav=document.querySelector('[data-p="solicitudes"]');
+  showP('solicitudes',nav);
+  if(h.startsWith('ver=')){viewReq(h.slice(4).replace(/[^0-9a-f-]/gi,''));return}
+  let pre;try{pre=rqDecode(h.slice(4))}catch(_){toast('El enlace de Plan de Acción no se pudo leer','err');return}
+  if(!pre||!pre.ref)return;
+  try{const ex=(await sb(`expense_requests?source_ref=eq.${encodeURIComponent(pre.ref)}&user_id=eq.${CU.id}&status=in.(borrador,enviado,aprobado_distrito,aprobado)&select=id&order=created_at.desc&limit=1`))[0];
+    if(ex){toast('Ya tienes una solicitud para esta actividad','');viewReq(ex.id);return}}catch(_){}
+  openReq(null,pre);
+}
 let RQ={tab:null,list:[],use:{},edit:null,mine:[],mineUse:{},savedHere:{},apId:null,apMode:'aprobar',filter:''};
 
 function canApReq(q){
@@ -2796,13 +2812,15 @@ function rqCard(q){
 function rqSubOpts(t,sel){return`<option value="">— elegir —</option>`+Object.entries(RQ_SUB[t]||{}).map(([k,v])=>`<option value="${k}" ${sel===k?'selected':''}>${v}</option>`).join('')}
 function rqTipoChg(){const t=vv('rq-tipo');document.getElementById('rq-sub').innerHTML=rqSubOpts(t,'');document.getElementById('rq-ben-l').textContent=t==='medicos'?'Médicos o institución beneficiada ⚠️':(t==='marca'?'Evento, institución o público':'Área o equipo que lo necesita');}
 function rqCurChg(){document.getElementById('rq-sym').textContent=(SYM[CUR[vv('rq-ct')]]||'').trim()+' '+(CUR[vv('rq-ct')]||'')}
-async function openReq(id){
+async function openReq(id,pre){
   let q=null;
   if(id){try{q=(await sb(`expense_requests?id=eq.${id}&select=*`))[0]}catch(e){toast('Error: '+e.message,'err');return}}
-  RQ.edit=q;RQ.quote=null;
-  const ct=q?.country||(RQ_COUNTRIES.includes(CU.country)?CU.country:'Honduras'),t=q?.tipo||(isOffice()?'operativo':'medicos');
-  document.getElementById('rq-t').textContent=q?`${rqCode(q)} · ${q.status==='rechazado'?'Corregir y reenviar':'Editar solicitud'}`:'Nueva solicitud';
-  document.getElementById('rq-b').innerHTML=`
+  RQ.edit=q;RQ.quote=null;RQ.pre=pre||null;
+  const ct=q?.country||(RQ_COUNTRIES.includes(CU.country)?CU.country:'Honduras'),t=q?.tipo||pre?.tipo||(isOffice()?'operativo':'medicos');
+  if(pre&&!q){q={title:pre.title,justification:pre.just,beneficiaries:pre.ben,event_date:/^\d{4}-\d{2}-\d{2}$/.test(pre.date||'')?pre.date:'',subtipo:pre.sub,amount:(CUR[ct]==='USD'&&+pre.usd>0)?+pre.usd:'',_pre:true}}
+  const planNote=(pre&&+pre.usd>0)?`<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:var(--rs);padding:10px 12px;margin-bottom:12px;font-size:13px;color:#1E3A8A">📋 Viene de <strong>Plan de Acción</strong>. Inversión planificada: <strong>US$ ${(+pre.usd).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>${CUR[ct]!=='USD'?`. Escribe el monto real en ${CUR[ct]}.`:'. Revisa los datos y envía.'}</div>`:(pre?`<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:var(--rs);padding:10px 12px;margin-bottom:12px;font-size:13px;color:#1E3A8A">📋 Viene de <strong>Plan de Acción</strong>. Completa el monto y envía.</div>`:'');
+  document.getElementById('rq-t').textContent=q&&!q._pre?`${rqCode(q)} · ${q.status==='rechazado'?'Corregir y reenviar':'Editar solicitud'}`:'Nueva solicitud';
+  document.getElementById('rq-b').innerHTML=`${planNote}
     ${q?.status==='rechazado'?`<div class="viol-box critical" style="margin-bottom:14px"><div class="viol-title critical">Rechazada: ${esc(q.general_comments||q.district_comments||'')}</div><div style="font-size:12px">Corrige lo necesario y vuelve a enviarla.</div></div>`:''}
     <div class="fg2">
       <div><label class="flb">Tipo de gasto</label><select class="fse" id="rq-tipo" onchange="rqTipoChg()">${Object.entries(RQ_TIPO).map(([k,v])=>`<option value="${k}" ${t===k?'selected':''}>${v}</option>`).join('')}</select></div>
@@ -2858,7 +2876,7 @@ async function saveReq(status){
   try{
     let id=RQ.edit?.id;
     // se guarda primero como borrador para poder subir la cotización; luego se envía
-    if(!id){const r=await sb('expense_requests',{method:'POST',body:{...body,status:'borrador'}});id=r[0].id;RQ.edit=r[0]}
+    if(!id){const r=await sb('expense_requests',{method:'POST',body:{...body,status:'borrador',...(RQ.pre?{source_ref:RQ.pre.ref,plan_amount_usd:+RQ.pre.usd||null}:{})}});id=r[0].id;RQ.edit=r[0]}
     else await sb(`expense_requests?id=eq.${id}`,{method:'PATCH',prefer:'return=minimal',body:{...body,status:RQ.edit.status==='rechazado'?'rechazado':'borrador'}});
     if(RQ.quote){const p=await uploadQuote(id,RQ.quote.data);await sb(`expense_requests?id=eq.${id}`,{method:'PATCH',prefer:'return=minimal',body:{quote_url:p}})}
     if(status==='enviado'){await sb(`expense_requests?id=eq.${id}`,{method:'PATCH',prefer:'return=minimal',body:{status:'enviado'}});notifyReq(id)}
@@ -2896,6 +2914,7 @@ async function viewReq(id){
       ${row('Fecha',q.event_date?fdate(q.event_date+'T12:00:00')+(q.event_end&&q.event_end!==q.event_date?' al '+fdate(q.event_end+'T12:00:00'):''):'')}
       ${row('Pago',RQ_PAY[q.payment_mode])}
       ${row('Proveedor',esc(q.vendor))}
+      ${row('Origen',q.source_ref?`📋 Plan de Acción (${esc(q.source_ref.split(':')[0]==='mesa'?'mesa redonda':q.source_ref.split(':')[0]==='oneone'?'one to one':'patrocinio')})${q.plan_amount_usd?' · planificado US$ '+(+q.plan_amount_usd).toLocaleString('en-US',{minimumFractionDigits:2}):''} · <a href="https://nutriben-ca.github.io/plan-accion/" target="_blank" rel="noopener">abrir plan</a>`:'')}
       ${row('Cotización',q.quote_url?`<button type="button" class="btn bgh btn-sm" onclick="openReceipt('${q.quote_url}','solicitudes')">📎 Ver</button>`:'')}
       ${row('Enviada',q.submitted_at?fdate(q.submitted_at):'')}
       ${q.district_comments?`<div style="margin-top:10px;padding:10px;background:#FEF9C3;border-radius:var(--rs);font-size:13px"><strong>Jefe inmediato:</strong> ${esc(q.district_comments)}</div>`:''}
