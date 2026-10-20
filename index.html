@@ -2730,17 +2730,17 @@ let RQ={tab:null,list:[],use:{},edit:null,mine:[],mineUse:{},savedHere:{},apId:n
 function canApReq(q){
   if(!CU||q.user_id===CU.id)return false;
   const o=rqOwnerRole(q);
-  // Misma jerarquía para todos: jefe inmediato → Gerencia General (Controller cierra las de Gerencia)
-  if(MGR.includes(CU.role))return q.status==='enviado'&&!MGR.includes(o);
+  // Jefe inmediato → Gerencia General para todos; las del jefe van directo a Gerencia; las de Gerencia, directo a Controller
+  if(MGR.includes(CU.role))return q.status==='enviado'&&!MGR.includes(o)&&o!=='gerente_general';
   if(CU.role==='gerente_general')return o!=='gerente_general'&&(q.status==='aprobado_distrito'||(q.status==='enviado'&&MGR.includes(o)));
-  if(CU.role==='controller')return q.status==='aprobado_distrito'&&o==='gerente_general';
+  if(CU.role==='controller')return q.status==='enviado'&&o==='gerente_general';
   return false;
 }
 const canPayReq=()=>['controller','gerente_general'].includes(CU?.role);
 const isReqApprover=()=>MGR.includes(CU?.role)||['gerente_general','controller'].includes(CU?.role);
 function rqFlow(q){
   const o=rqOwnerRole(q)||CU?.role;
-  const direct=MGR.includes(o);
+  const direct=MGR.includes(o)||o==='gerente_general';
   const who=o==='gerente_general'?'Controller':'Gerencia General';
   const st=q.status;
   const s1=['aprobado_distrito','aprobado','cerrada'].includes(st)||(direct&&['aprobado','cerrada'].includes(st));
@@ -3189,7 +3189,7 @@ function renderPolicy(){
   <div class="card" style="margin-bottom:16px"><div class="ch"><span class="ctitle">4.4 Solicitud previa de inversión y gastos</span></div><div class="cb">
     <ul style="font-size:13px;color:var(--soft);line-height:2;padding-left:16px">
       <li>Todo gasto que <strong>no</strong> sea de gira (alimentación, hotel), combustible, parqueo o peaje necesita una <strong>solicitud aprobada antes de gastar</strong>: atenciones y eventos con médicos, congresos, patrocinios, material, eventos de marca y gastos operativos</li>
-      <li>Aprobación, igual para todos: <strong>jefe inmediato y luego Gerencia General</strong>. Nadie aprueba lo suyo: las del jefe pasan directo a Gerencia General y las de Gerencia General las cierra Controller después del jefe</li>
+      <li>Aprobación, igual para todos: <strong>jefe inmediato y luego Gerencia General</strong>. Nadie aprueba lo suyo: las del jefe pasan directo a Gerencia General y las de Gerencia General las aprueba Controller</li>
       <li>Toda solicitud debe enviarse <strong>al menos 48 horas antes</strong> de la actividad. Si no, se marca con alerta para el jefe y Gerencia General</li>
       <li>Se puede pagar con tarjeta corporativa, con anticipo o directo al proveedor. Controller registra la entrega del anticipo o el pago</li>
       <li>En la liquidación, cada factura de esos gastos se liga a su solicitud. Lo liquidado no debe superar lo aprobado</li>
