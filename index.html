@@ -2703,6 +2703,12 @@ const rqBadge=s=>{const[c,l]=RQ_ST[s]||['bd',s];return`<span class="badge ${c}">
 const rqCode=q=>'SOL-'+String(q.folio).padStart(4,'0');
 const rqAmt=q=>+(q.approved_amount??q.amount)||0;
 const rqOwnerRole=q=>q.expense_profiles?.role;
+// Política: solicitar al menos 48 horas antes de la actividad (si no, va con alerta)
+const RQ_MIN_H=48;
+function rqHoursBefore(eventDate,submitted){if(!eventDate)return null;const ev=new Date(eventDate+'T00:00:00-06:00'),sub=submitted?new Date(submitted):new Date();return (ev-sub)/36e5}
+function rqLate(q){if(['borrador'].includes(q.status)&&!q.submitted_at)return false;const h=rqHoursBefore(q.event_date,q.submitted_at);return h!==null&&h<RQ_MIN_H}
+function rqLateTxt(q){const h=rqHoursBefore(q.event_date,q.submitted_at);return h<0?'Solicitada después de la actividad':`Solicitada con ${Math.max(0,Math.floor(h))} h de anticipación (mínimo ${RQ_MIN_H} h)`}
+const rqLateBox=q=>rqLate(q)?`<div class="viol-box critical" style="margin-bottom:12px"><div class="viol-title critical">⏰ ${rqLateTxt(q)}</div><div style="font-size:12px">La política pide solicitar al menos ${RQ_MIN_H} horas antes de la actividad.</div></div>`:'';
 const RQ_SEL='*,expense_profiles!expense_requests_user_id_fkey(full_name,role,country)';
 // Enlaces desde Plan de Acción: #sol=<datos> abre una solicitud prellenada; #ver=<id> abre una solicitud
 (function(){try{const h=location.hash||'';if(h.startsWith('#sol=')||h.startsWith('#ver=')){sessionStorage.setItem('cf_link',h.slice(1));history.replaceState(null,'',location.pathname+location.search)}}catch(_){}})();
@@ -2724,16 +2730,17 @@ let RQ={tab:null,list:[],use:{},edit:null,mine:[],mineUse:{},savedHere:{},apId:n
 function canApReq(q){
   if(!CU||q.user_id===CU.id)return false;
   const o=rqOwnerRole(q);
-  if(MGR.includes(CU.role))return q.status==='enviado'&&o==='visitador';
-  if(CU.role==='gerente_general')return q.status==='aprobado_distrito'||(q.status==='enviado'&&(MGR.includes(o)||o==='controller'));
-  if(CU.role==='controller')return q.status==='enviado'&&o==='gerente_general';
+  // Misma jerarquía para todos: jefe inmediato → Gerencia General (Controller cierra las de Gerencia)
+  if(MGR.includes(CU.role))return q.status==='enviado'&&!MGR.includes(o);
+  if(CU.role==='gerente_general')return o!=='gerente_general'&&(q.status==='aprobado_distrito'||(q.status==='enviado'&&MGR.includes(o)));
+  if(CU.role==='controller')return q.status==='aprobado_distrito'&&o==='gerente_general';
   return false;
 }
 const canPayReq=()=>['controller','gerente_general'].includes(CU?.role);
 const isReqApprover=()=>MGR.includes(CU?.role)||['gerente_general','controller'].includes(CU?.role);
 function rqFlow(q){
   const o=rqOwnerRole(q)||CU?.role;
-  const direct=o!=='visitador';
+  const direct=MGR.includes(o);
   const who=o==='gerente_general'?'Controller':'Gerencia General';
   const st=q.status;
   const s1=['aprobado_distrito','aprobado','cerrada'].includes(st)||(direct&&['aprobado','cerrada'].includes(st));
@@ -2801,7 +2808,7 @@ function rqCard(q){
     <div style="flex:1 1 240px;min-width:0">
       <div style="font-weight:800;font-size:14px">${rqCode(q)} · ${esc(q.title)}</div>
       <div style="font-size:12px;color:var(--soft);margin-top:3px">${mine?'':`<strong>${esc(q.expense_profiles?.full_name||'—')}</strong> · `}${RQ_TIPO[q.tipo]||q.tipo}${q.subtipo?' · '+esc(RQ_SUB[q.tipo]?.[q.subtipo]||q.subtipo):''}${q.event_date?' · 📅 '+fdate(q.event_date+'T12:00:00'):''}</div>
-      <div style="font-size:12px;margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${rqBadge(q.status)}<span style="font-size:15px;font-weight:800;color:var(--p)">${fmt(rqAmt(q),q.currency)}</span>${q.approved_amount!=null&&+q.approved_amount<+q.amount?`<span style="color:var(--soft);text-decoration:line-through">${fmt(q.amount,q.currency)}</span>`:''}<span style="color:var(--soft)">${RQ_PAY[q.payment_mode]||''}</span>${q.paid_at?'<span class="badge ba">pagado</span>':''}</div>
+      <div style="font-size:12px;margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${rqBadge(q.status)}<span style="font-size:15px;font-weight:800;color:var(--p)">${fmt(rqAmt(q),q.currency)}</span>${q.approved_amount!=null&&+q.approved_amount<+q.amount?`<span style="color:var(--soft);text-decoration:line-through">${fmt(q.amount,q.currency)}</span>`:''}<span style="color:var(--soft)">${RQ_PAY[q.payment_mode]||''}</span>${q.paid_at?'<span class="badge ba">pagado</span>':''}${rqLate(q)?`<span class="badge" style="background:#FEE2E2;color:#991B1B">⏰ menos de ${RQ_MIN_H} h</span>`:''}</div>
       ${['aprobado','cerrada'].includes(q.status)?rqBar(q,u):''}
       ${q.status==='rechazado'&&(q.general_comments||q.district_comments)?`<div style="margin-top:6px;font-size:12px;color:#991B1B">Motivo: ${esc(q.general_comments||q.district_comments)}</div>`:''}
     </div>
@@ -2811,6 +2818,7 @@ function rqCard(q){
 // ── Formulario ──
 function rqSubOpts(t,sel){return`<option value="">— elegir —</option>`+Object.entries(RQ_SUB[t]||{}).map(([k,v])=>`<option value="${k}" ${sel===k?'selected':''}>${v}</option>`).join('')}
 function rqTipoChg(){const t=vv('rq-tipo');document.getElementById('rq-sub').innerHTML=rqSubOpts(t,'');document.getElementById('rq-ben-l').textContent=t==='medicos'?'Médicos o institución beneficiada ⚠️':(t==='marca'?'Evento, institución o público':'Área o equipo que lo necesita');}
+function rqDateHint(){const el=document.getElementById('rq-d1h');if(!el)return;const h=rqHoursBefore(vv('rq-d1'),null);el.textContent=h!==null&&h<RQ_MIN_H?`⏰ Menos de ${RQ_MIN_H} h de anticipación: irá con alerta`:''}
 function rqCurChg(){document.getElementById('rq-sym').textContent=(SYM[CUR[vv('rq-ct')]]||'').trim()+' '+(CUR[vv('rq-ct')]||'')}
 async function openReq(id,pre){
   let q=null;
@@ -2831,7 +2839,7 @@ async function openReq(id,pre){
       <div class="ffc"><label class="flb">¿Qué necesitas? ⚠️</label><input class="fin" id="rq-title" maxlength="120" value="${esc(q?.title)}" placeholder="Ej.: Cena científica con pediatras del Hospital Escuela"/></div>
       <div class="ffc"><label class="flb">Justificación: objetivo y resultado esperado ⚠️</label><textarea class="fta" id="rq-just" placeholder="¿Para qué es? ¿Qué esperas lograr (prescripción, relación, educación)? ¿Por qué ahora?">${esc(q?.justification)}</textarea></div>
       <div class="ffc"><label class="flb" id="rq-ben-l">${t==='medicos'?'Médicos o institución beneficiada ⚠️':(t==='marca'?'Evento, institución o público':'Área o equipo que lo necesita')}</label><input class="fin" id="rq-ben" value="${esc(q?.beneficiaries)}" placeholder="Dr. García, Dra. López · Hospital Escuela"/></div>
-      <div><label class="flb">Fecha del gasto o evento</label><input class="fin" type="date" id="rq-d1" value="${q?.event_date||''}"/></div>
+      <div><label class="flb">Fecha del gasto o evento</label><input class="fin" type="date" id="rq-d1" value="${q?.event_date||''}" oninput="rqDateHint()"/><div id="rq-d1h" style="font-size:11px;color:var(--err);margin-top:3px"></div></div>
       <div><label class="flb">Hasta (si dura varios días)</label><input class="fin" type="date" id="rq-d2" value="${q?.event_end||''}"/></div>
       <div><label class="flb">País / moneda</label><select class="fse" id="rq-ct" onchange="rqCurChg()">${RQ_COUNTRIES.map(c=>`<option value="${c}" ${ct===c?'selected':''}>${FLG[c]||''} ${c} (${CUR[c]})</option>`).join('')}</select></div>
       <div><label class="flb">Monto que solicitas ⚠️</label><div style="display:flex;gap:6px;align-items:center"><span id="rq-sym" style="font-weight:800;color:var(--p);white-space:nowrap">${(SYM[CUR[ct]]||'').trim()} ${CUR[ct]}</span><input class="fin" id="rq-amt" inputmode="decimal" value="${q?.amount??''}" placeholder="0.00"/></div></div>
@@ -2839,7 +2847,7 @@ async function openReq(id,pre){
       <div><label class="flb">Proveedor (si ya lo sabes)</label><input class="fin" id="rq-vendor" value="${esc(q?.vendor)}" placeholder="Restaurante, hotel, imprenta..."/></div>
       <div class="ffc"><label class="flb">Cotización o programa (opcional)</label><div id="rq-qbox">${rqQuoteBox()}</div></div>
     </div>`;
-  openMo('mo-req');
+  openMo('mo-req');rqDateHint();
 }
 function rqQuoteBox(){
   const has=RQ.quote||RQ.edit?.quote_url;
@@ -2874,6 +2882,7 @@ async function saveReq(status){
     if(tipo!=='operativo'&&!d1){toast('Indica la fecha del evento o del gasto','err');return}
   }else if(!title){toast('Escribe al menos qué necesitas para guardar el borrador','err');return}
   if(d1&&d2&&d2<d1){toast('La fecha final es anterior a la inicial','err');return}
+  if(status==='enviado'&&d1){const h=rqHoursBefore(d1,null);if(h<RQ_MIN_H&&!confirm(`⏰ ${h<0?'La actividad ya pasó':'Faltan '+Math.max(0,Math.floor(h))+' horas para la actividad'}.\n\nLa política pide solicitar al menos ${RQ_MIN_H} horas antes. La solicitud se enviará con una alerta que verán tu jefe y Gerencia.\n\n¿Enviar de todas formas?`))return}
   const body={tipo,subtipo:vv('rq-sub')||null,title,justification:just||'—',beneficiaries:ben||null,event_date:d1,event_end:d2,country:vv('rq-ct'),amount:amt>0?amt:0.01,payment_mode:vv('rq-pay'),vendor:vv('rq-vendor').trim()||null};
   ldr(true);
   try{
@@ -2906,6 +2915,7 @@ async function viewReq(id){
     document.getElementById('rqv-t').textContent=`${rqCode(q)} · ${q.title}`;
     document.getElementById('rqv-b').innerHTML=`
       <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">${rqBadge(q.status)}<span style="font-size:12px;color:var(--soft)">${FLG[q.country]||''} ${q.country} · ${cur}</span>${q.paid_at?`<span class="badge ba">${q.payment_mode==='anticipo'?'Anticipo entregado':'Proveedor pagado'} ${fdate(q.paid_at)}${q.paid_ref?' · Ref. '+esc(q.paid_ref):''}</span>`:''}</div>
+      ${rqLateBox(q)}
       ${['borrador','cancelado'].includes(q.status)?'':rqFlow(q)}
       <div class="tcard" style="margin-bottom:14px"><div style="font-size:11px;opacity:.75">${q.approved_amount!=null?'Monto aprobado':'Monto solicitado'}</div>
         <div style="font-size:28px;font-weight:800;font-family:'DM Sans',sans-serif">${fmt(rqAmt(q),cur)}</div>
@@ -2956,7 +2966,7 @@ async function openReqAp(id,mode){
   try{q=(await sb(`expense_requests?id=eq.${id}&select=${RQ_SEL}`))[0]}catch(_){}
   if(!q){toast('No se encontró la solicitud','err');return}
   RQ.apId=id;RQ.apQ=q;rqApMode(mode);
-  document.getElementById('rqa-info').innerHTML=`<strong>${rqCode(q)} · ${esc(q.title)}</strong><br><span style="font-size:13px;color:var(--soft)">${esc(q.expense_profiles?.full_name||'')} · ${RQ_TIPO[q.tipo]||''}${q.event_date?' · '+fdate(q.event_date+'T12:00:00'):''} · ${RQ_PAY[q.payment_mode]||''}</span>
+  document.getElementById('rqa-info').innerHTML=`${rqLateBox(q)}<strong>${rqCode(q)} · ${esc(q.title)}</strong><br><span style="font-size:13px;color:var(--soft)">${esc(q.expense_profiles?.full_name||'')} · ${RQ_TIPO[q.tipo]||''}${q.event_date?' · '+fdate(q.event_date+'T12:00:00'):''} · ${RQ_PAY[q.payment_mode]||''}</span>
     <div style="font-size:13px;margin-top:8px">${esc(q.justification).replace(/\n/g,'<br>')}</div>
     ${q.beneficiaries?`<div style="font-size:13px;margin-top:6px"><strong>Para:</strong> ${esc(q.beneficiaries)}</div>`:''}
     ${q.quote_url?`<div style="margin-top:8px"><button type="button" class="btn bgh btn-sm" onclick="openReceipt('${q.quote_url}','solicitudes')">📎 Ver cotización</button></div>`:''}
@@ -3179,7 +3189,8 @@ function renderPolicy(){
   <div class="card" style="margin-bottom:16px"><div class="ch"><span class="ctitle">4.4 Solicitud previa de inversión y gastos</span></div><div class="cb">
     <ul style="font-size:13px;color:var(--soft);line-height:2;padding-left:16px">
       <li>Todo gasto que <strong>no</strong> sea de gira (alimentación, hotel), combustible, parqueo o peaje necesita una <strong>solicitud aprobada antes de gastar</strong>: atenciones y eventos con médicos, congresos, patrocinios, material, eventos de marca y gastos operativos</li>
-      <li>Aprobación: <strong>jefe inmediato y luego Gerencia General</strong>. Las solicitudes del jefe y de Controller las aprueba Gerencia General; las de Gerencia General, Controller</li>
+      <li>Aprobación, igual para todos: <strong>jefe inmediato y luego Gerencia General</strong>. Nadie aprueba lo suyo: las del jefe pasan directo a Gerencia General y las de Gerencia General las cierra Controller después del jefe</li>
+      <li>Toda solicitud debe enviarse <strong>al menos 48 horas antes</strong> de la actividad. Si no, se marca con alerta para el jefe y Gerencia General</li>
       <li>Se puede pagar con tarjeta corporativa, con anticipo o directo al proveedor. Controller registra la entrega del anticipo o el pago</li>
       <li>En la liquidación, cada factura de esos gastos se liga a su solicitud. Lo liquidado no debe superar lo aprobado</li>
       <li>Una solicitud puede cubrir varias facturas, por ejemplo un presupuesto mensual de atenciones a médicos</li>
