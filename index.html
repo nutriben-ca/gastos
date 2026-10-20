@@ -740,7 +740,7 @@ const SYM={HNL:'L ',USD:'$ ',NIO:'C$ ',CRC:'₡',EUR:'€ '};
 const CAT={combustible:'⛽ Combustible',alimentacion:'🍽️ Alimentación',hotel:'🏨 Hotel',parqueo:'🅿️ Parqueo',peaje:'🛣️ Peaje',representacion:'🤝 Representación',otro:'📎 Otro',suministros:'📦 Suministros y materiales',servicios:'💡 Servicios públicos',mantenimiento:'🔧 Reparación y mantenimiento de equipo'};
 const catOpts=()=>Object.entries(CAT).filter(([k])=>isOffice()?!!ODOO_OFI[k]:!ODOO_OFI[k]);
 const ALIM_SUB={desayuno:'☕ Desayuno',almuerzo:'🍽️ Almuerzo',cena:'🌙 Cena'};
-const HTP={medico:'👨‍⚕️ Médico',enfermera:'👩‍⚕️ Enfermera',administrativo:'🗂️ Administrativo',otro:'👤 Otro'};
+const HTP={medico:'👨‍⚕️ Médico',enfermera:'👩‍⚕️ Enfermera',farmacia:'🏪 Dependiente de farmacia',administrativo:'🗂️ Administrativo',otro:'👤 Otro'};
 const OBJ_ACT={fortalecer:'🤝 Fortalecer relaciones',confianza:'🛡️ Generar confianza',evidencia:'📊 Compartir evidencia',educar:'🎓 Educar científicamente',oportunidades:'🔍 Identificar oportunidades',objeciones:'💬 Resolver objeciones',prescripcion:'📈 Incrementar prescripción',seguimiento:'🔄 Dar seguimiento',marca:'🏷️ Posicionar marca',fidelizar:'❤️ Fidelizar médicos',necesidades:'🧩 Comprender necesidades',adopcion:'🚀 Impulsar adopción'};
 const ESPEC={pediatria:'Pediatría',neonatologia:'Neonatología',ginecologia:'Ginecología y Obstetricia',medicina_general:'Medicina General',medicina_familiar:'Medicina Familiar',nutricion:'Nutrición',enfermeria:'Enfermería',gastroenterologia:'Gastroenterología Pediátrica',alergologia:'Alergología',administracion:'Administración / Gerencia',otro:'Otra'};
 const MON=['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -1724,6 +1724,7 @@ async function saveRep(status){
       }
     }
     {const rv=rqViolations();if(rv.length&&!confirm('📝 Gastos sin solicitud aprobada o por encima de lo aprobado:\n'+rv.map(v=>v.type==='request_over'?'• '+v.code+': excede '+fmt(v.diff,v.cur):(v.type==='no_request_hcp'?'• Atención '+v.line:'• Línea '+v.line+' ('+CAT[v.cat]+')')).join('\n')+'\n\nTu jefe verá esta alerta al revisar. ¿Enviar de todas formas?'))return}
+    for(let k=0;k<HL.length;k++){const sinInst=HL[k].attendees.find(a=>(a.name||'').trim()&&a.type!=='medico'&&!(a.institution||'').trim());if(sinInst){toast('Atención '+(k+1)+': indica la institución de '+sinInst.name+' ('+(HTP[sinInst.type]||'').replace(/^\S+\s/,'')+')','err');return}}
     for(let k=0;k<HL.length;k++){syncH(HL[k]);if(!HL[k].hcp_name){toast('Atención '+(k+1)+': agrega el nombre de al menos un profesional atendido','err');return}}
     const advV=parseMonto(vv('r-adv'));
     for(let k=0;k<EL.length;k++){const l=EL[k];if(pm(l)==='propio'&&!l.no_invoice&&!(l.img_preview||l.invoice_image_url)){toast('Línea '+(k+1)+': pagaste con tu dinero; adjunta la foto del comprobante para el reembolso','err');return}}
@@ -2689,11 +2690,12 @@ async function doApproval(action){
 // ── 📝 SOLICITUDES DE INVERSIÓN / GASTO (aprobación previa) ──
 // Todo gasto que no sea de gira, combustible o parqueo/peaje necesita una solicitud aprobada:
 // el colaborador la pide → jefe inmediato (Ricardo) → Gerencia General. Luego la liquida con sus facturas.
-const RQ_TIPO={medicos:'👨‍⚕️ Inversión en médicos',marca:'🏷️ Eventos y marca',operativo:'🧰 Gastos operativos'};
+const RQ_TIPO={medicos:'👩‍⚕️ Profesionales de salud y canal',marca:'🏷️ Eventos y marca',operativo:'🧰 Gastos operativos'};
 const RQ_SUB={
-  medicos:{oneone:'One to one',puntual:'Solicitud puntual del médico',congreso_int:'Congreso internacional',congreso_nac:'Congreso nacional',cena:'Cena o desayuno científico',mesa:'Mesa redonda',patrocinio:'Patrocinio o inscripción',atenciones:'Atenciones a médicos (presupuesto del período)',otro:'Otro'},
+  medicos:{oneone:'One to one',puntual:'Solicitud puntual del médico',cap_enfermeria:'Capacitación a enfermería',maternidad:'Actividad en maternidad',cap_farmacia:'Capacitación a dependientes de farmacia',visita_inst:'Visita o actividad institucional',congreso_int:'Congreso internacional',congreso_nac:'Congreso nacional',cena:'Cena o desayuno científico',mesa:'Mesa redonda',patrocinio:'Patrocinio o inscripción',atenciones:'Atenciones a médicos (presupuesto del período)',otro:'Otro'},
   marca:{stand:'Stand o feria',material:'Material promocional',club:'Club Nutribén',digital:'Actividad digital',otro:'Otro'},
   operativo:{suministros:'Suministros y materiales',mantenimiento:'Reparación y mantenimiento',servicios:'Servicios',equipo:'Equipo o mobiliario',otro:'Otro'}};
+const RQ_AUD={medicos:'👨‍⚕️ Médicos',enfermeria:'👩‍⚕️ Enfermería / maternidad',farmacia:'🏪 Dependientes de farmacia',administrativo:'🗂️ Administrativos de hospital',mixto:'👥 Mixto'};
 const RQ_PAY={tarjeta:'💳 Tarjeta corporativa',anticipo:'💵 Anticipo',proveedor:'🏦 Pago directo a proveedor'};
 const RQ_ST={borrador:['bd','Borrador'],enviado:['bs','Enviada'],aprobado_distrito:['bp','Aprobada Jefe'],aprobado:['ba','Aprobada ✓'],rechazado:['br','Rechazada'],cancelado:['bd','Cancelada'],cerrada:['bd','Cerrada']};
 const RQ_COUNTRIES=['Honduras','El Salvador','Nicaragua','Costa Rica','Europa','Internacional'];
@@ -2777,7 +2779,7 @@ async function loadReqs(){
     if(RQ.tab==='mias')q+=`&user_id=eq.${CU.id}`;
     else if(RQ.tab==='aprobar')q+='&status=in.(enviado,aprobado_distrito)';
     else if(RQ.tab==='pagar')q+='&status=eq.aprobado&payment_mode=in.(anticipo,proveedor)&paid_at=is.null';
-    else{q+='&status=neq.borrador&limit=300';if(RQ.filter)q+=`&status=eq.${RQ.filter}`}
+    else{q+='&status=neq.borrador&limit=300';if(RQ.filter)q+=`&status=eq.${RQ.filter}`;if(RQ.aud)q+=`&audience=eq.${RQ.aud}`}
     let rows=await sb(q);
     if(RQ.tab==='aprobar')rows=rows.filter(canApReq);
     RQ.list=rows;
@@ -2788,6 +2790,7 @@ async function loadReqs(){
       const pend=rows.filter(r=>['enviado','aprobado_distrito'].includes(r.status)).length;
       sum.innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
         <select class="fin" style="width:auto;font-size:12px;padding:7px 10px" onchange="RQ.filter=this.value;loadReqs()"><option value="">Todos los estados</option>${['enviado','aprobado_distrito','aprobado','rechazado','cancelado','cerrada'].map(s=>`<option value="${s}" ${RQ.filter===s?'selected':''}>${RQ_ST[s][1]}</option>`).join('')}</select>
+        <select class="fin" style="width:auto;font-size:12px;padding:7px 10px" onchange="RQ.aud=this.value;loadReqs()"><option value="">Todos los públicos</option>${Object.entries(RQ_AUD).map(([k,v])=>`<option value="${k}" ${RQ.aud===k?'selected':''}>${v}</option>`).join('')}</select>
         <span style="font-size:13px;color:var(--soft)">${pend} en aprobación</span></div>
         ${Object.keys(by).length?`<div class="stats">${Object.entries(by).map(([c,v])=>`<div class="stat"><div class="stat-val" style="font-size:20px">${fmt(v.ap,c)}</div><div class="stat-lbl">Aprobado (${v.n} solicitud${v.n===1?'':'es'})</div><div style="font-size:12px;margin-top:4px;color:var(--soft)">Liquidado ${fmt(v.used,c)} · ${v.ap>0?Math.round(v.used/v.ap*100):0}%</div></div>`).join('')}</div>`:''}`;
     }else if(RQ.tab==='mias'){
@@ -2807,7 +2810,7 @@ function rqCard(q){
   return`<div class="card" style="margin-bottom:10px"><div class="ch" style="align-items:flex-start;gap:10px;flex-wrap:wrap">
     <div style="flex:1 1 240px;min-width:0">
       <div style="font-weight:800;font-size:14px">${rqCode(q)} · ${esc(q.title)}</div>
-      <div style="font-size:12px;color:var(--soft);margin-top:3px">${mine?'':`<strong>${esc(q.expense_profiles?.full_name||'—')}</strong> · `}${RQ_TIPO[q.tipo]||q.tipo}${q.subtipo?' · '+esc(RQ_SUB[q.tipo]?.[q.subtipo]||q.subtipo):''}${q.event_date?' · 📅 '+fdate(q.event_date+'T12:00:00'):''}</div>
+      <div style="font-size:12px;color:var(--soft);margin-top:3px">${mine?'':`<strong>${esc(q.expense_profiles?.full_name||'—')}</strong> · `}${q.audience&&q.audience!=='medicos'?RQ_AUD[q.audience]:(RQ_TIPO[q.tipo]||q.tipo)}${q.institution?' · '+esc(q.institution):''}${q.subtipo?' · '+esc(RQ_SUB[q.tipo]?.[q.subtipo]||q.subtipo):''}${q.event_date?' · 📅 '+fdate(q.event_date+'T12:00:00'):''}</div>
       <div style="font-size:12px;margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${rqBadge(q.status)}<span style="font-size:15px;font-weight:800;color:var(--p)">${fmt(rqAmt(q),q.currency)}</span>${q.approved_amount!=null&&+q.approved_amount<+q.amount?`<span style="color:var(--soft);text-decoration:line-through">${fmt(q.amount,q.currency)}</span>`:''}<span style="color:var(--soft)">${RQ_PAY[q.payment_mode]||''}</span>${q.paid_at?'<span class="badge ba">pagado</span>':''}${rqLate(q)?`<span class="badge" style="background:#FEE2E2;color:#991B1B">⏰ menos de ${RQ_MIN_H} h</span>`:''}</div>
       ${['aprobado','cerrada'].includes(q.status)?rqBar(q,u):''}
       ${q.status==='rechazado'&&(q.general_comments||q.district_comments)?`<div style="margin-top:6px;font-size:12px;color:#991B1B">Motivo: ${esc(q.general_comments||q.district_comments)}</div>`:''}
@@ -2817,7 +2820,9 @@ function rqCard(q){
 
 // ── Formulario ──
 function rqSubOpts(t,sel){return`<option value="">— elegir —</option>`+Object.entries(RQ_SUB[t]||{}).map(([k,v])=>`<option value="${k}" ${sel===k?'selected':''}>${v}</option>`).join('')}
-function rqTipoChg(){const t=vv('rq-tipo');document.getElementById('rq-sub').innerHTML=rqSubOpts(t,'');document.getElementById('rq-ben-l').textContent=t==='medicos'?'Médicos o institución beneficiada ⚠️':(t==='marca'?'Evento, institución o público':'Área o equipo que lo necesita');}
+function rqBenLbl(t,a){return t==='medicos'?({medicos:'Médicos beneficiados ⚠️',enfermeria:'Enfermeras o personal participante ⚠️',farmacia:'Dependientes o farmacias participantes ⚠️',administrativo:'Personal administrativo participante ⚠️',mixto:'Participantes ⚠️'}[a||'medicos']):(t==='marca'?'Evento, institución o público':'Área o equipo que lo necesita')}
+function rqTipoChg(){const t=vv('rq-tipo');document.getElementById('rq-sub').innerHTML=rqSubOpts(t,'');document.getElementById('rq-audw').style.display=t==='medicos'?'':'none';rqAudChg();}
+function rqAudChg(){const t=vv('rq-tipo'),a=vv('rq-aud');document.getElementById('rq-ben-l').textContent=rqBenLbl(t,a);document.getElementById('rq-inst-l').textContent=t==='medicos'&&a!=='medicos'?'Institución (hospital, maternidad o farmacia) ⚠️':'Institución (opcional)'}
 function rqDateHint(){const el=document.getElementById('rq-d1h');if(!el)return;const h=rqHoursBefore(vv('rq-d1'),null);el.textContent=h!==null&&h<RQ_MIN_H?`⏰ Menos de ${RQ_MIN_H} h de anticipación: irá con alerta`:''}
 function rqCurChg(){document.getElementById('rq-sym').textContent=(SYM[CUR[vv('rq-ct')]]||'').trim()+' '+(CUR[vv('rq-ct')]||'')}
 async function openReq(id,pre){
@@ -2836,9 +2841,11 @@ async function openReq(id,pre){
     <div class="fg2">
       <div><label class="flb">Tipo de gasto</label><select class="fse" id="rq-tipo" onchange="rqTipoChg()">${Object.entries(RQ_TIPO).map(([k,v])=>`<option value="${k}" ${t===k?'selected':''}>${v}</option>`).join('')}</select></div>
       <div><label class="flb">Detalle</label><select class="fse" id="rq-sub">${rqSubOpts(t,q?.subtipo)}</select></div>
+      <div class="ffc" id="rq-audw" style="${t==='medicos'?'':'display:none'}"><label class="flb">Público ⚠️</label><select class="fse" id="rq-aud" onchange="rqAudChg()">${Object.entries(RQ_AUD).map(([k,v])=>`<option value="${k}" ${(q?.audience||pre?.aud||'medicos')===k?'selected':''}>${v}</option>`).join('')}</select></div>
       <div class="ffc"><label class="flb">¿Qué necesitas? ⚠️</label><input class="fin" id="rq-title" maxlength="120" value="${esc(q?.title)}" placeholder="Ej.: Cena científica con pediatras del Hospital Escuela"/></div>
       <div class="ffc"><label class="flb">Justificación: objetivo y resultado esperado ⚠️</label><textarea class="fta" id="rq-just" placeholder="¿Para qué es? ¿Qué esperas lograr (prescripción, relación, educación)? ¿Por qué ahora?">${esc(q?.justification)}</textarea></div>
-      <div class="ffc"><label class="flb" id="rq-ben-l">${t==='medicos'?'Médicos o institución beneficiada ⚠️':(t==='marca'?'Evento, institución o público':'Área o equipo que lo necesita')}</label><input class="fin" id="rq-ben" value="${esc(q?.beneficiaries)}" placeholder="Dr. García, Dra. López · Hospital Escuela"/></div>
+      <div class="ffc"><label class="flb" id="rq-ben-l">${rqBenLbl(t,q?.audience||pre?.aud||'medicos')}</label><input class="fin" id="rq-ben" value="${esc(q?.beneficiaries)}" placeholder="Nombres de los participantes"/></div>
+      <div class="ffc"><label class="flb" id="rq-inst-l">Institución</label><input class="fin" id="rq-inst" value="${esc(q?.institution)}" placeholder="Hospital Escuela, Maternidad del HMEP, Farmacia Kielsa Centro..."/></div>
       <div><label class="flb">Fecha del gasto o evento</label><input class="fin" type="date" id="rq-d1" value="${q?.event_date||''}" oninput="rqDateHint()"/><div id="rq-d1h" style="font-size:11px;color:var(--err);margin-top:3px"></div></div>
       <div><label class="flb">Hasta (si dura varios días)</label><input class="fin" type="date" id="rq-d2" value="${q?.event_end||''}"/></div>
       <div><label class="flb">País / moneda</label><select class="fse" id="rq-ct" onchange="rqCurChg()">${RQ_COUNTRIES.map(c=>`<option value="${c}" ${ct===c?'selected':''}>${FLG[c]||''} ${c} (${CUR[c]})</option>`).join('')}</select></div>
@@ -2847,7 +2854,7 @@ async function openReq(id,pre){
       <div><label class="flb">Proveedor (si ya lo sabes)</label><input class="fin" id="rq-vendor" value="${esc(q?.vendor)}" placeholder="Restaurante, hotel, imprenta..."/></div>
       <div class="ffc"><label class="flb">Cotización o programa (opcional)</label><div id="rq-qbox">${rqQuoteBox()}</div></div>
     </div>`;
-  openMo('mo-req');rqDateHint();
+  openMo('mo-req');rqDateHint();rqAudChg();
 }
 function rqQuoteBox(){
   const has=RQ.quote||RQ.edit?.quote_url;
@@ -2873,17 +2880,19 @@ async function uploadQuote(rid,dataUrl){
   return path;
 }
 async function saveReq(status){
+  const aud=vv('rq-tipo')==='medicos'?(vv('rq-aud')||'medicos'):null,inst=vv('rq-inst').trim();
   const tipo=vv('rq-tipo'),title=vv('rq-title').trim(),just=vv('rq-just').trim(),ben=vv('rq-ben').trim(),amt=parseMonto(vv('rq-amt')),d1=vv('rq-d1')||null,d2=vv('rq-d2')||null;
   if(status==='enviado'){
     if(!title){toast('Escribe qué necesitas','err');return}
     if(just.length<15){toast('Explica el objetivo y el resultado esperado (justificación)','err');return}
     if(!(amt>0)){toast('Indica el monto que solicitas','err');return}
-    if(tipo==='medicos'&&!ben){toast('Indica los médicos o la institución beneficiada','err');return}
+    if(tipo==='medicos'&&!ben){toast('Indica quiénes participan','err');return}
+    if(tipo==='medicos'&&aud!=='medicos'&&!inst){toast('Indica la institución (hospital, maternidad o farmacia)','err');return}
     if(tipo!=='operativo'&&!d1){toast('Indica la fecha del evento o del gasto','err');return}
   }else if(!title){toast('Escribe al menos qué necesitas para guardar el borrador','err');return}
   if(d1&&d2&&d2<d1){toast('La fecha final es anterior a la inicial','err');return}
   if(status==='enviado'&&d1){const h=rqHoursBefore(d1,null);if(h<RQ_MIN_H&&!confirm(`⏰ ${h<0?'La actividad ya pasó':'Faltan '+Math.max(0,Math.floor(h))+' horas para la actividad'}.\n\nLa política pide solicitar al menos ${RQ_MIN_H} horas antes. La solicitud se enviará con una alerta que verán tu jefe y Gerencia.\n\n¿Enviar de todas formas?`))return}
-  const body={tipo,subtipo:vv('rq-sub')||null,title,justification:just||'—',beneficiaries:ben||null,event_date:d1,event_end:d2,country:vv('rq-ct'),amount:amt>0?amt:0.01,payment_mode:vv('rq-pay'),vendor:vv('rq-vendor').trim()||null};
+  const body={tipo,audience:aud,institution:inst||null,subtipo:vv('rq-sub')||null,title,justification:just||'—',beneficiaries:ben||null,event_date:d1,event_end:d2,country:vv('rq-ct'),amount:amt>0?amt:0.01,payment_mode:vv('rq-pay'),vendor:vv('rq-vendor').trim()||null};
   ldr(true);
   try{
     let id=RQ.edit?.id;
@@ -2923,7 +2932,9 @@ async function viewReq(id){
       ${row('Solicita',esc(q.expense_profiles?.full_name||'—'))}
       ${row('Tipo',(RQ_TIPO[q.tipo]||q.tipo)+(q.subtipo?' · '+esc(RQ_SUB[q.tipo]?.[q.subtipo]||q.subtipo):''))}
       ${row('Justificación',esc(q.justification).replace(/\n/g,'<br>'))}
-      ${row(q.tipo==='medicos'?'Beneficiarios':'Para',esc(q.beneficiaries))}
+      ${row('Público',q.audience?RQ_AUD[q.audience]:'')}
+      ${row('Institución',esc(q.institution))}
+      ${row(q.tipo==='medicos'?'Participantes':'Para',esc(q.beneficiaries))}
       ${row('Fecha',q.event_date?fdate(q.event_date+'T12:00:00')+(q.event_end&&q.event_end!==q.event_date?' al '+fdate(q.event_end+'T12:00:00'):''):'')}
       ${row('Pago',RQ_PAY[q.payment_mode])}
       ${row('Proveedor',esc(q.vendor))}
@@ -2968,6 +2979,7 @@ async function openReqAp(id,mode){
   RQ.apId=id;RQ.apQ=q;rqApMode(mode);
   document.getElementById('rqa-info').innerHTML=`${rqLateBox(q)}<strong>${rqCode(q)} · ${esc(q.title)}</strong><br><span style="font-size:13px;color:var(--soft)">${esc(q.expense_profiles?.full_name||'')} · ${RQ_TIPO[q.tipo]||''}${q.event_date?' · '+fdate(q.event_date+'T12:00:00'):''} · ${RQ_PAY[q.payment_mode]||''}</span>
     <div style="font-size:13px;margin-top:8px">${esc(q.justification).replace(/\n/g,'<br>')}</div>
+    ${q.audience?`<div style="font-size:13px;margin-top:6px"><strong>Público:</strong> ${RQ_AUD[q.audience]}${q.institution?' · '+esc(q.institution):''}</div>`:''}
     ${q.beneficiaries?`<div style="font-size:13px;margin-top:6px"><strong>Para:</strong> ${esc(q.beneficiaries)}</div>`:''}
     ${q.quote_url?`<div style="margin-top:8px"><button type="button" class="btn bgh btn-sm" onclick="openReceipt('${q.quote_url}','solicitudes')">📎 Ver cotización</button></div>`:''}
     ${q.district_comments?`<div style="margin-top:8px;font-size:13px;background:#FEF9C3;padding:8px;border-radius:var(--rs)"><strong>Jefe inmediato:</strong> ${esc(q.district_comments)}</div>`:''}`;
@@ -3188,6 +3200,7 @@ function renderPolicy(){
   </div></div>
   <div class="card" style="margin-bottom:16px"><div class="ch"><span class="ctitle">4.4 Solicitud previa de inversión y gastos</span></div><div class="cb">
     <ul style="font-size:13px;color:var(--soft);line-height:2;padding-left:16px">
+      <li>Las solicitudes de profesionales de salud indican el <strong>público</strong> (médicos, enfermería y maternidad, dependientes de farmacia, administrativos de hospital) y la <strong>institución</strong></li>
       <li>Todo gasto que <strong>no</strong> sea de gira (alimentación, hotel), combustible, parqueo o peaje necesita una <strong>solicitud aprobada antes de gastar</strong>: atenciones y eventos con médicos, congresos, patrocinios, material, eventos de marca y gastos operativos</li>
       <li>Aprobación, igual para todos: <strong>jefe inmediato y luego Gerencia General</strong>. Nadie aprueba lo suyo: las del jefe pasan directo a Gerencia General y las de Gerencia General las aprueba Controller</li>
       <li>Toda solicitud debe enviarse <strong>al menos 48 horas antes</strong> de la actividad. Si no, se marca con alerta para el jefe y Gerencia General</li>
