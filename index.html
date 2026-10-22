@@ -2447,9 +2447,8 @@ async function fuelCross(userId,y,m,cycle,cur=null,extraDates=[]){
     if(permitido!=null&&cargado>permitido+0.01)flags.push([`Cargó ${fmt(r2(cargado-permitido),'HNL')} más de lo permitido`,'err']);
     let dev=null;if(kmReal!=null&&e&&e.km>0){dev=(kmReal-e.km)/e.km;if(Math.abs(dev)>KM_TOL)flags.push([`Odómetro ${dev>0?'+':''}${Math.round(dev*100)}% vs. plan`,'err'])}
     {const vistos={};odoW.forEach(l=>{const k=l.odometer_km+'|'+(l.odometer_unit||'km');vistos[k]=(vistos[k]||0)+1});if(Object.values(vistos).some(n=>n>1))flags.push(['Dos cargas con el mismo odómetro: posible duplicado','err'])}
-    {const fuera=inW.filter(l=>new Date(l.expense_date+'T12:00:00').getDay()!==1);if(fuera.length)flags.push([`Carga fuera del lunes (${fuera.map(l=>niceD(l.expense_date)).join(', ')})`,'warn'])}
     if(kmUnitNote)flags.push(['Odómetro en km y en millas: revisar si cambió de vehículo','warn']);
-    else if(inW.length&&kmReal==null)flags.push(['Km reales: falta la carga del lunes siguiente','info']);
+    else if(inW.length&&kmReal==null)flags.push(['Km reales: falta la primera carga de la semana siguiente','info']);
     if(L0&&u0==='mi'&&kmReal!=null)flags.push([`Odómetro en millas (convertido a km)`,'info']);
     return{w,p,e,credit,permitido,cargado,kmReal,kmParcial,lecturas,dev,flags,n:inW.length};
   }).filter(r=>r.p||r.n);
