@@ -750,7 +750,7 @@ const POL_LIMITS={
   'El Salvador':{alimentacion:{desayuno:7,almuerzo:16,cena:15,diario:38},hotel:{noche:70}}
 };
 // Non-reimbursable keywords (for AI validation)
-const NO_REIMB=['alcohol','cerveza','vino','licor','ron','whisky','vodka','cigarro','cigarrillo','postre','helado','golosina','snack','dulce','propina','multa','entretenimiento','bar','discoteca','pelicula','cine'];
+const NO_REIMB=['alcohol','cerveza','vino','licor','ron','whisky','vodka','cigarro','cigarrillo','postre','helado','golosina','snack','dulce','propina adicional','propina extra','propina voluntaria','multa','entretenimiento','bar','discoteca','pelicula','cine'];
 
 let CU=null,CRid=null,CAid=null,CTid=null,EL=[],HL=[],polLimits={};
 
@@ -1609,7 +1609,7 @@ function noInvBlock(l,i){
   const capL=NOINV_CAP_LINE[rcur()];
   return `<div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:var(--rs);padding:12px;margin-bottom:12px">
     <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><strong style="color:#9A3412">📄 Gasto sin factura · comprobante sustituto</strong><button type="button" class="btn bgh btn-sm" onclick="setNoInv(${i},false)">Sí tengo factura</button></div>
-    <div style="font-size:12px;color:#9A3412;margin:6px 0 10px">Solo parqueo, peaje, alimentación u "otro" (transporte local, propinas). Máximo ${fmt(capL,rcur())} por gasto (alimentación ${fmt(NOINV_CAP_ALIM[rcur()],rcur())} por comida) y ${fmt(NOINV_CAP_LIQ[rcur()],rcur())} por liquidación. No es deducible de impuestos.</div>
+    <div style="font-size:12px;color:#9A3412;margin:6px 0 10px">Solo parqueo, peaje, alimentación u "otro" (transporte local). Máximo ${fmt(capL,rcur())} por gasto (alimentación ${fmt(NOINV_CAP_ALIM[rcur()],rcur())} por comida) y ${fmt(NOINV_CAP_LIQ[rcur()],rcur())} por liquidación. No es deducible de impuestos.</div>
     <div><label class="flb">Motivo ⚠️</label><select class="fse ${!l.no_invoice_reason?'over':''}" onchange="EL[${i}].no_invoice_reason=this.value;rEL()"><option value="">Selecciona el motivo</option>${Object.entries(NOINV_REASON).map(([k,v])=>`<option value="${k}" ${l.no_invoice_reason===k?'selected':''}>${v}</option>`).join('')}</select></div>
     <div style="font-size:12px;background:#fff;border:1px dashed #FDBA74;border-radius:8px;padding:10px;margin-top:10px;line-height:1.5"><strong>Declaración que se generará:</strong><br>${esc(noInvText(l))}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
@@ -1719,7 +1719,7 @@ async function saveRep(status){
   {const cur=rcur();let tot=0;
    for(let k=0;k<EL.length;k++){const l=EL[k];if(!l.no_invoice)continue;
      const amt=parseFloat(l.amount)||0;tot+=amt;
-     if(!NOINV_CATS.includes(l.category)){toast('Línea '+(k+1)+(isOffice()?': sin factura solo se acepta en suministros y materiales':': sin factura solo se acepta parqueo, peaje, alimentación u otro (transporte local, propinas)'),'err');return}
+     if(!NOINV_CATS.includes(l.category)){toast('Línea '+(k+1)+(isOffice()?': sin factura solo se acepta en suministros y materiales':': sin factura solo se acepta parqueo, peaje, alimentación u otro (transporte local)'),'err');return}
      if(!l.no_invoice_reason){toast('Línea '+(k+1)+': elige el motivo por el que no tienes factura','err');return}
      if(!(amt>0)||!(l.vendor||'').trim()||!(l.city||'').trim()||!(l.description||'').trim()){toast('Línea '+(k+1)+': un gasto sin factura necesita lugar, ciudad, concepto y monto','err');return}
      const capK=l.category==='alimentacion'?NOINV_CAP_ALIM[cur]:NOINV_CAP_LINE[cur];
@@ -3240,7 +3240,7 @@ function renderPolicy(){
   </div></div>
   <div class="card" style="margin-bottom:16px"><div class="ch"><span class="ctitle">5. Gastos NO Reconocidos</span></div><div class="cb">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      ${['🍺 Bebidas alcohólicas','🚬 Cigarrillos','🍫 Golosinas o snacks','🍰 Postres','🚦 Multas de tráfico','👔 Lavandería (giras <7 días)','🎬 Entretenimiento personal','👨‍👩‍👧 Gastos de acompañantes','💰 Propinas fuera de factura'].map(i=>`<div style="background:#FEF2F2;border-radius:6px;padding:8px 10px;font-size:12px;color:#991B1B">❌ ${i}</div>`).join('')}
+      ${['🍺 Bebidas alcohólicas','🚬 Cigarrillos','🍫 Golosinas o snacks','🍰 Postres','🚦 Multas de tráfico','👔 Lavandería (giras <7 días)','🎬 Entretenimiento personal','👨‍👩‍👧 Gastos de acompañantes','💰 Propinas extra, voluntarias o fuera de factura (la propina de ley incluida en la factura sí se reconoce)'].map(i=>`<div style="background:#FEF2F2;border-radius:6px;padding:8px 10px;font-size:12px;color:#991B1B">❌ ${i}</div>`).join('')}
     </div>
   </div></div>
   <div class="card"><div class="ch"><span class="ctitle">6. Proceso de Liquidación</span></div><div class="cb">
