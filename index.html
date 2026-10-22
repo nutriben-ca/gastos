@@ -2395,10 +2395,12 @@ async function renderTeam(){
 const KM_TOL=0.15;
 // El plan semanal empezó a usarse la semana del 19 de octubre de 2026: las semanas anteriores no se cruzan
 const FUEL_PLAN_START='2026-10-19';
-async function fuelCross(userId,y,m,cycle,cur=null){
+async function fuelCross(userId,y,m,cycle,cur=null,extraDates=[]){
   const last=new Date(y,m,0).getDate(),pad=n=>String(n).padStart(2,'0');
   const a=cycle==='segunda'?`${y}-${pad(m)}-16`:`${y}-${pad(m)}-01`,b=cycle==='segunda'?`${y}-${pad(m)}-${pad(last)}`:`${y}-${pad(m)}-15`;
   const weeks=[];for(let w=monOf(a);w<=b;w=addDays(w,7))if(w>=FUEL_PLAN_START)weeks.push(w);
+  // También las semanas de las cargas de esta liquidación, aunque estén fuera de su quincena
+  (cur?.loads||[]).map(l=>l.expense_date).concat(extraDates||[]).forEach(d=>{if(!d)return;const w=monOf(d);if(w>=FUEL_PLAN_START&&!weeks.includes(w))weeks.push(w)});weeks.sort();
   if(!weeks.length)return[];
   const[plans,reps]=await Promise.all([sb(`fuel_plans?user_id=eq.${userId}&week_monday=gte.${addDays(weeks[0],-7)}&week_monday=lte.${weeks[weeks.length-1]}&select=*`),sb(`expense_reports?user_id=eq.${userId}&select=id`)]);
   // cur: liquidación abierta en el formulario (sus cargas aún no están guardadas)
@@ -2458,7 +2460,7 @@ async function viewRep(id){
     const hcps=await sb(`hcp_attentions?report_id=eq.${id}&order=attention_date.asc`);
     let trips=[];if(FUEL_LIQ&&FUEL.ok){try{trips=await sb(`report_trips?report_id=eq.${id}&order=trip_date.asc,created_at.asc`)}catch(_){}}
     const ep=r.expense_profiles,cur=r.currency;
-    let cross='';if(FUEL.ok&&FUEL.sedes.some(s=>s.country===r.country)&&items.some(i=>i.category==='combustible')){try{if(!FUEL.legsOk)await loadLegs();cross=fuelCrossHtml(await fuelCross(r.user_id,r.period_year,r.period_month,r.cycle),cur)}catch(_){}}
+    let cross='';if(FUEL.ok&&FUEL.sedes.some(s=>s.country===r.country)&&items.some(i=>i.category==='combustible')){try{if(!FUEL.legsOk)await loadLegs();cross=fuelCrossHtml(await fuelCross(r.user_id,r.period_year,r.period_month,r.cycle,null,items.filter(i=>i.category==='combustible').map(i=>i.expense_date)),cur)}catch(_){}}
     const rqh=await rqReportHtml(items,hcps,cur).catch(()=>'');
     // Combustible: misma lectura de odómetro en otra liquidación (posible carga duplicada)
     let dupH='';try{const odo=[...new Set(items.filter(i=>i.category==='combustible'&&i.odometer_km!=null).map(i=>i.odometer_km))];
@@ -2667,7 +2669,7 @@ async function openAp(id,action){
   document.getElementById('ap-info').innerHTML=`<strong>${r.expense_profiles?.full_name||'—'}</strong> · ${MON[r.period_month]} ${r.period_year}<br><span style="font-size:24px;font-weight:800;color:var(--p)">${fmt(r.total_amount,r.currency)}</span>${r.advance_amount>0?`<span style="font-size:13px;color:var(--soft);margin-left:12px">Adelanto: ${fmt(r.advance_amount,r.currency)} · Saldo: ${fmt(r.balance_amount,r.currency)}</span>`:''}`;
   const violsEl=document.getElementById('ap-viols');
   violsEl.innerHTML=(r.policy_violations||0)>0?`<div class="viol-box"><div class="viol-title">⚠️ Esta liquidación tiene ${r.policy_violations} alerta(s) de política que requieren revisión.</div></div>`:'';
-  if(FUEL.ok&&FUEL.sedes.some(s=>s.country===r.country)){try{const hasFuel=(await sb(`expense_items?report_id=eq.${id}&category=eq.combustible&select=id&limit=1`)).length>0;const cr=hasFuel?await fuelCross(r.user_id,r.period_year,r.period_month,r.cycle):[];const bad=cr.filter(x=>x.flags.some(f=>f[1]==='err'));if(cr.some(x=>x.n))violsEl.innerHTML+=`<div style="margin-top:8px;padding:10px 12px;border-radius:var(--rs);font-size:13px;background:${bad.length?'#FEF2F2':'#F0FDF4'}">⛽ ${bad.length?`<strong style="color:#991B1B">${bad.length} semana(s) de combustible con alertas</strong> (${esc(bad.map(x=>niceD(x.w)+': '+x.flags.filter(f=>f[1]==='err').map(f=>f[0]).join(', ')).join(' · '))})`:'Combustible dentro del plan semanal'} · detalle en "Ver"</div>`}catch(_){}}
+  if(FUEL.ok&&FUEL.sedes.some(s=>s.country===r.country)){try{const fd=(await sb(`expense_items?report_id=eq.${id}&category=eq.combustible&select=expense_date`)).map(x=>x.expense_date);const hasFuel=fd.length>0;const cr=hasFuel?await fuelCross(r.user_id,r.period_year,r.period_month,r.cycle,null,fd):[];const bad=cr.filter(x=>x.flags.some(f=>f[1]==='err'));if(cr.some(x=>x.n))violsEl.innerHTML+=`<div style="margin-top:8px;padding:10px 12px;border-radius:var(--rs);font-size:13px;background:${bad.length?'#FEF2F2':'#F0FDF4'}">⛽ ${bad.length?`<strong style="color:#991B1B">${bad.length} semana(s) de combustible con alertas</strong> (${esc(bad.map(x=>niceD(x.w)+': '+x.flags.filter(f=>f[1]==='err').map(f=>f[0]).join(', ')).join(' · '))})`:'Combustible dentro del plan semanal'} · detalle en "Ver"</div>`}catch(_){}}
   if(FUEL_LIQ&&FUEL.ok&&FUEL.sedes.some(s=>s.country===r.country)){try{const[tp,fi]=await Promise.all([sb(`report_trips?report_id=eq.${id}&select=amount`),sb(`expense_items?report_id=eq.${id}&category=eq.combustible&select=amount`)]);
     const rec=r2(tp.reduce((a,x)=>a+(+x.amount||0),0)),car=r2(fi.reduce((a,x)=>a+(+x.amount||0),0));
     if(car>0||tp.length)violsEl.innerHTML+=`<div style="margin-top:8px;padding:10px 12px;border-radius:var(--rs);font-size:13px;background:${!tp.length||car>rec?'#FEF2F2':'#F0FDF4'}">⛽ Combustible: cargado <strong>${fmt(car,r.currency)}</strong> · reconocido por rutas <strong>${fmt(rec,r.currency)}</strong>${!tp.length?' · <strong style="color:#991B1B">sin rutas registradas</strong>':(car>rec?` · <strong style="color:#991B1B">excede ${fmt(car-rec,r.currency)}</strong>`:' ✓')}</div>`}catch(_){}}
