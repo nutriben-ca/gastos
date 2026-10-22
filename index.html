@@ -1225,6 +1225,7 @@ function openNewRep(){
   const n=new Date();
   document.getElementById('r-mo').value=n.getMonth()+1;
   document.getElementById('r-yr').value=n.getFullYear();
+  document.getElementById('r-cycle').value=n.getDate()>=16?'segunda':'primera';
   document.getElementById('r-adv').value='0';
   const cur=rcur();
   document.getElementById('adv-sym').textContent=SYM[cur]||'';
@@ -1690,15 +1691,29 @@ function fixOcrDate(iso,conf){
   if(best!==iso)toast('Fecha leída como '+iso+'; se ajustó a '+alt+' (día/mes invertidos). Verifícala con la factura','err');
   return best;
 }
+// Mes, año y quincena de una fecha AAAA-MM-DD
+const perDe=f=>{const d=new Date((f||'')+'T12:00:00');return isNaN(d)?null:{m:d.getMonth()+1,y:d.getFullYear(),c:d.getDate()>=16?'segunda':'primera'}};
+// Si todos los gastos caen en un mismo mes y quincena distintos a los elegidos, el período se ajusta solo
+function ajustarPeriodo(){
+  const ps=[...EL.map(l=>l.expense_date),...HL.map(h=>h.attention_date)].map(perDe).filter(Boolean);
+  if(!ps.length)return null;
+  const k=x=>x.y+'-'+x.m+'-'+x.c,u=[...new Set(ps.map(k))];
+  if(u.length!==1)return null;
+  const t=ps[0],cur={m:parseInt(vv('r-mo')),y:parseInt(vv('r-yr')),c:vv('r-cycle')};
+  if(k(t)===k(cur))return null;
+  document.getElementById('r-mo').value=t.m;document.getElementById('r-yr').value=t.y;document.getElementById('r-cycle').value=t.c;
+  return `${MON[t.m]} ${t.y} · ${t.c==='primera'?'primera':'segunda'} quincena`;
+}
 function fueraDePeriodo(){
-  const pm=parseInt(vv('r-mo')),py=parseInt(vv('r-yr'));
-  const fuera=f=>{const d=new Date((f||'')+'T12:00:00');return !isNaN(d)&&!(d.getMonth()+1===pm&&d.getFullYear()===py)};
+  const pm=parseInt(vv('r-mo')),py=parseInt(vv('r-yr')),pc=vv('r-cycle');
+  const fuera=f=>{const x=perDe(f);return !!x&&!(x.m===pm&&x.y===py&&x.c===pc)};
   return [...EL.map((l,k)=>({l,k,lbl:'Línea '+(k+1),f:l.expense_date,q:l.vendor||l.description||''})),
           ...HL.map((h,k)=>({l:h,k,lbl:'Atención '+(k+1),f:h.attention_date,q:h.vendor||h.hcp_name||''}))].filter(x=>fuera(x.f));
 }
 
 // ── SAVE ──
 async function saveRep(status){
+  {const aj=ajustarPeriodo();if(aj)toast('📅 Período ajustado a las fechas de tus gastos: '+aj,'ok')}
   const month=parseInt(vv('r-mo')),year=parseInt(vv('r-yr')),cycle=vv('r-cycle');
   // Gastos sin factura: siempre válidos antes de guardar
   {const cur=rcur();let tot=0;
@@ -1735,7 +1750,7 @@ async function saveRep(status){
     for(let k=0;k<EL.length;k++){if((EL[k].expense_date||'')>hoy){toast('Línea '+(k+1)+': la fecha '+EL[k].expense_date+' está en el futuro. Corrígela','err');return}}
     for(let k=0;k<HL.length;k++){if((HL[k].attention_date||'')>hoy){toast('Atención '+(k+1)+': la fecha '+HL[k].attention_date+' está en el futuro. Corrígela','err');return}}
     const fp=fueraDePeriodo();
-    if(fp.length&&!confirm('Hay '+fp.length+' gasto(s) con fecha fuera de '+MON[month]+' '+year+':\n'+fp.map(x=>'• '+x.lbl+': '+x.f+' — '+x.q).join('\n')+'\n\n¿Las fechas son correctas y quieres enviar así?'))return;
+    if(fp.length&&!confirm('Hay '+fp.length+' gasto(s) con fecha fuera de '+MON[month]+' '+year+' · '+(cycle==='primera'?'primera quincena (1 al 15)':'segunda quincena (16 al fin de mes)')+':\n'+fp.map(x=>'• '+x.lbl+': '+x.f+' — '+x.q).join('\n')+'\n\n¿Las fechas son correctas y quieres enviar así?'))return;
     // El kilometraje debe crecer con las fechas de carga
     const fuel=EL.map((l,k)=>({l,k})).filter(x=>x.l.category==='combustible').sort((a,b)=>(a.l.expense_date||'').localeCompare(b.l.expense_date||'')||a.k-b.k);
     for(let q=1;q<fuel.length;q++){
