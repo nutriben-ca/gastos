@@ -1109,12 +1109,13 @@ async function loadDash(){
     if(ct)q+=`&country=eq.${encodeURIComponent(ct)}`;
     if(st)q+=`&status=eq.${encodeURIComponent(st)}`;
     const rpts=await sb(q);
-    const pend=rpts.filter(r=>r.status==='enviado').length;
+    // Pendientes: las que te toca aprobar a ti, y aparte las que esperan al jefe inmediato o a Gerencia
+    const pend=rpts.filter(r=>canAp(r)).length,enJefe=rpts.filter(r=>r.status==='enviado'&&!canAp(r)).length,enGG=rpts.filter(r=>r.status==='aprobado_distrito'&&!canAp(r)).length;
     const appr=rpts.filter(r=>r.status==='aprobado_general').length;
     const viols=rpts.filter(r=>(r.policy_violations||0)>0).length;
     document.getElementById('dash-stats').innerHTML=`
       <div class="stat"><div class="stat-ico" style="background:#EFF6FF"><svg viewBox="0 0 24 24" width="19" height="19" fill="#3B82F6"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg></div><div class="stat-val">${rpts.length}</div><div class="stat-lbl">Total liquidaciones</div></div>
-      <div class="stat"><div class="stat-ico" style="background:#FEF9C3"><svg viewBox="0 0 24 24" width="19" height="19" fill="#D97706"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg></div><div class="stat-val" style="color:#D97706">${pend}</div><div class="stat-lbl">Pendientes aprobación</div></div>
+      <div class="stat"><div class="stat-ico" style="background:#FEF9C3"><svg viewBox="0 0 24 24" width="19" height="19" fill="#D97706"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg></div><div class="stat-val" style="color:#D97706">${pend}</div><div class="stat-lbl">Pendientes contigo</div>${enJefe||enGG?`<div style="font-size:11px;color:var(--soft);margin-top:4px">${[enJefe?enJefe+" con el jefe inmediato":"",enGG?enGG+" con Gerencia General":""].filter(Boolean).join(" · ")}</div>`:""}</div>
       <div class="stat"><div class="stat-ico" style="background:#DCFCE7"><svg viewBox="0 0 24 24" width="19" height="19" fill="#16A34A"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div><div class="stat-val" style="color:#16A34A">${appr}</div><div class="stat-lbl">Aprobadas</div></div>
       <div class="stat"><div class="stat-ico" style="background:#FEF9C3"><svg viewBox="0 0 24 24" width="19" height="19" fill="#D97706"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div><div class="stat-val" style="color:#D97706">${viols}</div><div class="stat-lbl">Con alertas política</div></div>`;
     try{
