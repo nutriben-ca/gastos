@@ -3047,7 +3047,7 @@ async function viewReq(id){
       ${row('Fecha',q.event_date?fdate(q.event_date+'T12:00:00')+(q.event_end&&q.event_end!==q.event_date?' al '+fdate(q.event_end+'T12:00:00'):''):'')}
       ${row('Pago',RQ_PAY[q.payment_mode])}
       ${row('Proveedor',esc(q.vendor))}
-      ${row('Origen',q.source_ref?`📋 Plan de Acción (${esc(q.source_ref.split(':')[0]==='mesa'?'mesa redonda':q.source_ref.split(':')[0]==='oneone'?'one to one':q.source_ref.split(':')[0]==='puntual'?'solicitud puntual':q.source_ref.split(':')[0]==='congreso'?'congreso nacional · presupuesto de país':'patrocinio')})${q.plan_amount_usd?' · planificado US$ '+(+q.plan_amount_usd).toLocaleString('en-US',{minimumFractionDigits:2}):''} · <a href="https://nutriben-ca.github.io/plan-accion/" target="_blank" rel="noopener">abrir plan</a>`:'')}
+      ${row('Origen',q.source_ref?`📋 Plan de Acción (${esc(q.source_ref.split(':')[0]==='mesa'?'mesa redonda':q.source_ref.split(':')[0]==='oneone'?'one to one':q.source_ref.split(':')[0]==='puntual'?'solicitud puntual':q.source_ref.split(':')[0]==='congreso'?'evento nacional · presupuesto de país':'patrocinio')})${q.plan_amount_usd?' · planificado US$ '+(+q.plan_amount_usd).toLocaleString('en-US',{minimumFractionDigits:2}):''} · <a href="https://nutriben-ca.github.io/plan-accion/" target="_blank" rel="noopener">abrir plan</a>`:'')}
       ${row('Cotización',q.quote_url?`<button type="button" class="btn bgh btn-sm" onclick="openReceipt('${q.quote_url}','solicitudes')">📎 Ver</button>`:'')}
       ${row('Enviada',q.submitted_at?fdate(q.submitted_at):'')}
       ${q.district_comments?`<div style="margin-top:10px;padding:10px;background:#FEF9C3;border-radius:var(--rs);font-size:13px"><strong>Jefe inmediato:</strong> ${esc(q.district_comments)}</div>`:''}
