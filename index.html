@@ -367,7 +367,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#F8FAFF}
 <div id="app">
   <div class="sbov" id="sbov" onclick="closeSB()"></div>
   <aside class="sb" id="sb">
-    <div class="sb-logo"><h2>CASA FERNE</h2><p>Liquidación de Gastos · v3.1</p></div>
+    <div class="sb-logo"><h2>CASA FERNE</h2><p>Liquidación de Gastos · v3.2</p></div>
     <div class="sb-user"><div class="sb-nm" id="sb-nm">—</div><div class="rp" id="sb-rp"></div><button type="button" id="push-btn" class="btn bgh btn-sm" style="margin-top:10px;width:100%;justify-content:center" onclick="enablePush()">🔔 Activar notificaciones</button></div>
     <nav class="sb-nav" id="sb-nav"></nav>
     <div class="sb-ft"><button class="blogout" onclick="doLogout()"><svg viewBox="0 0 24 24" width="15" height="15" fill="white"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>Cerrar sesión</button></div>
@@ -455,7 +455,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#F8FAFF}
     <div id="page-solicitudes" class="page">
       <div class="ph">
         <div><div class="ph-title">Solicitudes</div><div class="ph-sub">Aprobación previa de inversión y gastos fuera de gira</div></div>
-        <div class="ph-act"><button class="btn bp1 btn-lg" onclick="openReq()"><svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Nueva solicitud</button></div>
+        <div class="ph-act" id="rq-head"></div>
       </div>
       <div class="tabs" id="rq-tabs"></div>
       <div id="rq-sum"></div>
@@ -2842,6 +2842,26 @@ function rqLate(q){if(['borrador'].includes(q.status)&&!q.submitted_at)return fa
 function rqLateTxt(q){const h=rqHoursBefore(q.event_date,q.submitted_at);return h<0?'Solicitada después de la actividad':`Solicitada con ${Math.max(0,Math.floor(h))} h de anticipación (mínimo ${RQ_MIN_H} h)`}
 const rqLateBox=q=>rqLate(q)?`<div class="viol-box critical" style="margin-bottom:12px"><div class="viol-title critical">⏰ ${rqLateTxt(q)}</div><div style="font-size:12px">La política pide solicitar al menos ${RQ_MIN_H} horas antes de la actividad.</div></div>`:'';
 const RQ_SEL='*,expense_profiles!expense_requests_user_id_fkey(full_name,role,country)';
+// Regla: toda solicitud nace en Plan de Acción (queda registrada y suma a los KPI de inversión).
+// Única excepción: Controller (Keily), para gastos operativos o de marca no ligados a HCPs.
+const PLAN_URL='https://nutriben-ca.github.io/plan-accion/';
+const RQ_DIRECT_TIPOS=['operativo','marca'];
+const canDirectReq=()=>CU?.role==='controller';
+const rqOffPlan=q=>!q.source_ref&&!(rqOwnerRole(q)==='controller'&&RQ_DIRECT_TIPOS.includes(q.tipo));
+const rqOffBadge=q=>rqOffPlan(q)?'<span class="badge" style="background:#FEF3C7;color:#92400E" title="Se creó directo en gastos, no desde Plan de Acción">⚠️ Fuera de Plan de Acción</span>':'';
+function rqHeadBtn(){
+  const el=document.getElementById('rq-head');if(!el)return;
+  const plus='<svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
+  el.innerHTML=canDirectReq()
+    ?`<a class="btn bgh btn-lg" href="${PLAN_URL}" target="_blank" rel="noopener">📋 Plan de Acción</a><button class="btn bp1 btn-lg" onclick="openReq()">${plus}Solicitud administrativa</button>`
+    :`<a class="btn bp1 btn-lg" href="${PLAN_URL}" target="_blank" rel="noopener">📋 Pedir desde Plan de Acción</a>`;
+}
+function rqMonthOpts(){
+  const d=new Date(),out=[];const nm=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  for(let i=3;i>=-12;i--){const x=new Date(d.getFullYear(),d.getMonth()+i,1);const k=x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0');out.push([k,nm[x.getMonth()]+' '+x.getFullYear()])}
+  return out;
+}
+function rqMonthRange(k){const[y,m]=k.split('-').map(Number);const a=k+'-01',n=new Date(y,m,1),b=n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-01';return[a,b]}
 // Enlaces desde Plan de Acción: #sol=<datos> abre una solicitud prellenada; #ver=<id> abre una solicitud
 (function(){try{const h=location.hash||'';if(h.startsWith('#sol=')||h.startsWith('#ver=')){sessionStorage.setItem('cf_link',h.slice(1));history.replaceState(null,'',location.pathname+location.search)}}catch(_){}})();
 function rqDecode(b){b=b.replace(/-/g,'+').replace(/_/g,'/');while(b.length%4)b+='=';return JSON.parse(decodeURIComponent(escape(atob(b))))}
@@ -2857,7 +2877,7 @@ async function rqCheckLink(){
     if(ex){toast('Ya tienes una solicitud para esta actividad','');viewReq(ex.id);return}}catch(_){}
   openReq(null,pre);
 }
-let RQ={tab:null,list:[],use:{},edit:null,mine:[],mineUse:{},savedHere:{},apId:null,apMode:'aprobar',filter:''};
+let RQ={tab:null,list:[],use:{},edit:null,mine:[],mineUse:{},savedHere:{},apId:null,apMode:'aprobar',filter:'',month:(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')})()};
 
 function canApReq(q){
   if(!CU||q.user_id===CU.id)return false;
@@ -2902,31 +2922,41 @@ function rqTabs(){
   document.getElementById('rq-tabs').innerHTML=t.map(([k,l])=>`<div class="tab ${RQ.tab===k?'on':''}" onclick="RQ.tab='${k}';loadReqs()">${l}</div>`).join('');
 }
 async function loadReqs(){
-  rqTabs();ldr(true);
+  rqTabs();rqHeadBtn();ldr(true);
   const box=document.getElementById('rq-list'),sum=document.getElementById('rq-sum');
   try{
     let q=`expense_requests?select=${RQ_SEL}&order=created_at.desc`;
     if(RQ.tab==='mias')q+=`&user_id=eq.${CU.id}`;
     else if(RQ.tab==='aprobar')q+='&status=in.(enviado,aprobado_distrito)';
     else if(RQ.tab==='pagar')q+='&status=eq.aprobado&payment_mode=in.(anticipo,proveedor)&paid_at=is.null';
-    else{q+='&status=neq.borrador&limit=300';if(RQ.filter)q+=`&status=eq.${RQ.filter}`;if(RQ.aud)q+=`&audience=eq.${RQ.aud}`}
+    else{q+='&status=neq.borrador';if(RQ.month){const[a,b]=rqMonthRange(RQ.month);q+=`&or=(and(event_date.gte.${a},event_date.lt.${b}),and(event_date.is.null,created_at.gte.${a},created_at.lt.${b}))`}else q+='&limit=500';if(RQ.filter)q+=`&status=eq.${RQ.filter}`;if(RQ.aud)q+=`&audience=eq.${RQ.aud}`}
     let rows=await sb(q);
     if(RQ.tab==='aprobar')rows=rows.filter(canApReq);
     RQ.list=rows;
     RQ.use=await rqUsage(rows.filter(r=>['aprobado','cerrada'].includes(r.status)).map(r=>r.id));
     // resumen
     if(RQ.tab==='equipo'){
-      const by={};rows.filter(r=>['aprobado','cerrada'].includes(r.status)).forEach(r=>{const k=r.currency;by[k]=by[k]||{ap:0,used:0,n:0};by[k].ap+=rqAmt(r);by[k].used+=RQ.use[r.id]?.used||0;by[k].n++});
+      const by={};
+      rows.forEach(r=>{const k=r.currency;const b=by[k]=by[k]||{ap:0,used:0,n:0,pe:0,np:0};
+        if(['aprobado','cerrada'].includes(r.status)){b.ap+=rqAmt(r);b.used+=RQ.use[r.id]?.used||0;b.n++}
+        else if(['enviado','aprobado_distrito'].includes(r.status)){b.pe+=rqAmt(r);b.np++}});
       const pend=rows.filter(r=>['enviado','aprobado_distrito'].includes(r.status)).length;
+      const off=rows.filter(r=>rqOffPlan(r)&&!['rechazado','cancelado'].includes(r.status)).length;
+      const mLbl=RQ.month?(rqMonthOpts().find(x=>x[0]===RQ.month)||[0,RQ.month])[1]:'todos los meses';
       sum.innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <select class="fin" style="width:auto;font-size:12px;padding:7px 10px;font-weight:700" onchange="RQ.month=this.value;loadReqs()" title="Mes de la actividad (para provisionar)"><option value="">📅 Todos los meses</option>${rqMonthOpts().map(([k,l])=>`<option value="${k}" ${RQ.month===k?'selected':''}>📅 ${l}</option>`).join('')}</select>
         <select class="fin" style="width:auto;font-size:12px;padding:7px 10px" onchange="RQ.filter=this.value;loadReqs()"><option value="">Todos los estados</option>${['enviado','aprobado_distrito','aprobado','rechazado','cancelado','cerrada'].map(s=>`<option value="${s}" ${RQ.filter===s?'selected':''}>${RQ_ST[s][1]}</option>`).join('')}</select>
         <select class="fin" style="width:auto;font-size:12px;padding:7px 10px" onchange="RQ.aud=this.value;loadReqs()"><option value="">Todos los públicos</option>${Object.entries(RQ_AUD).map(([k,v])=>`<option value="${k}" ${RQ.aud===k?'selected':''}>${v}</option>`).join('')}</select>
         <span style="font-size:13px;color:var(--soft)">${pend} en aprobación</span></div>
-        ${Object.keys(by).length?`<div class="stats">${Object.entries(by).map(([c,v])=>`<div class="stat"><div class="stat-val" style="font-size:20px">${fmt(v.ap,c)}</div><div class="stat-lbl">Aprobado (${v.n} solicitud${v.n===1?'':'es'})</div><div style="font-size:12px;margin-top:4px;color:var(--soft)">Liquidado ${fmt(v.used,c)} · ${v.ap>0?Math.round(v.used/v.ap*100):0}%</div></div>`).join('')}</div>`:''}`;
+        <div style="font-size:12px;color:var(--soft);margin-bottom:8px">Provisión de <strong>${esc(mLbl)}</strong> según la fecha de la actividad${RQ.filter||RQ.aud?' · con filtros aplicados':''}</div>
+        ${Object.keys(by).length?`<div class="stats">${Object.entries(by).map(([c,v])=>`<div class="stat"><div class="stat-val" style="font-size:20px">${fmt(v.ap,c)}</div><div class="stat-lbl">Aprobado (${v.n} solicitud${v.n===1?'':'es'})</div>
+          <div style="font-size:12px;margin-top:4px;color:var(--soft)">Liquidado ${fmt(v.used,c)} · ${v.ap>0?Math.round(v.used/v.ap*100):0}% · Por liquidar <strong>${fmt(Math.max(0,v.ap-v.used),c)}</strong></div>
+          ${v.np?`<div style="font-size:12px;margin-top:2px;color:#92400E">+ ${fmt(v.pe,c)} en aprobación (${v.np})</div>`:''}</div>`).join('')}</div>`:''}
+        ${off?`<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:var(--rs);padding:8px 12px;margin:4px 0 12px;font-size:12px;color:#92400E">⚠️ ${off} solicitud${off===1?'':'es'} de este período se crearon fuera de Plan de Acción (antes de la regla). No suman al plan del médico.</div>`:''}`;
     }else if(RQ.tab==='mias'){
-      sum.innerHTML=`<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:var(--rs);padding:10px 12px;margin-bottom:12px;font-size:13px;color:#1E3A8A">Pide aprobación <strong>antes</strong> de gastar en médicos, eventos, material o gastos operativos. Gira, combustible y parqueo no necesitan solicitud. Cuando te la aprueben, liga tus facturas a la solicitud en tu liquidación.</div>`;
+      sum.innerHTML=`<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:var(--rs);padding:10px 12px;margin-bottom:12px;font-size:13px;color:#1E3A8A">Toda solicitud se pide desde <a href="${PLAN_URL}" target="_blank" rel="noopener"><strong>Plan de Acción</strong></a> (one to one, mesas redondas, solicitudes puntuales, patrocinios y congresos), <strong>antes</strong> de gastar. Así queda registrada en el plan del médico. Gira, combustible y parqueo no necesitan solicitud. Cuando te la aprueben, liga tus facturas a la solicitud en tu liquidación.</div>`;
     }else sum.innerHTML='';
-    if(!rows.length){box.innerHTML=`<div class="card"><div class="cb"><div class="empty"><h3>${RQ.tab==='aprobar'?'Todo al día':RQ.tab==='pagar'?'Nada por pagar':'Sin solicitudes'}</h3><p>${RQ.tab==='mias'?'Usa “Nueva solicitud” para pedir una aprobación':''}</p></div></div></div>`;ldr(false);updBadges();return}
+    if(!rows.length){box.innerHTML=`<div class="card"><div class="cb"><div class="empty"><h3>${RQ.tab==='aprobar'?'Todo al día':RQ.tab==='pagar'?'Nada por pagar':'Sin solicitudes'}</h3><p>${RQ.tab==='mias'?'Pide tus solicitudes desde Plan de Acción':''}</p></div></div></div>`;ldr(false);updBadges();return}
     box.innerHTML=rows.map(rqCard).join('');
   }catch(e){toast('Error: '+e.message,'err')}
   ldr(false);updBadges();
@@ -2934,14 +2964,14 @@ async function loadReqs(){
 function rqCard(q){
   const mine=q.user_id===CU.id,u=RQ.use[q.id]?.used||0;
   const btns=[`<button class="btn bgh btn-sm" onclick="viewReq('${q.id}')">Ver</button>`];
-  if(mine&&['borrador','rechazado'].includes(q.status))btns.push(`<button class="btn bp1 btn-sm" onclick="openReq('${q.id}')">${q.status==='rechazado'?'Corregir y reenviar':'Editar'}</button>`);
+  if(mine&&['borrador','rechazado'].includes(q.status)&&(q.source_ref||canDirectReq()))btns.push(`<button class="btn bp1 btn-sm" onclick="openReq('${q.id}')">${q.status==='rechazado'?'Corregir y reenviar':'Editar'}</button>`);
   if(canApReq(q))btns.push(`<button class="btn berr btn-sm" onclick="openReqAp('${q.id}','rechazar')">Rechazar</button><button class="btn bok btn-sm" onclick="openReqAp('${q.id}','aprobar')">✓ Aprobar</button>`);
   if(RQ.tab==='pagar'&&canPayReq())btns.push(`<button class="btn bok btn-sm" onclick="payReq('${q.id}')">${q.payment_mode==='anticipo'?'💵 Anticipo entregado':'🏦 Proveedor pagado'}</button>`);
   return`<div class="card" style="margin-bottom:10px"><div class="ch" style="align-items:flex-start;gap:10px;flex-wrap:wrap">
     <div style="flex:1 1 240px;min-width:0">
       <div style="font-weight:800;font-size:14px">${rqCode(q)} · ${esc(q.title)}</div>
       <div style="font-size:12px;color:var(--soft);margin-top:3px">${mine?'':`<strong>${esc(q.expense_profiles?.full_name||'—')}</strong> · `}${q.audience&&q.audience!=='medicos'?RQ_AUD[q.audience]:(RQ_TIPO[q.tipo]||q.tipo)}${q.institution?' · '+esc(q.institution):''}${q.subtipo?' · '+esc(RQ_SUB[q.tipo]?.[q.subtipo]||q.subtipo):''}${q.event_date?' · 📅 '+fdate(q.event_date+'T12:00:00'):''}</div>
-      <div style="font-size:12px;margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${rqBadge(q.status)}<span style="font-size:15px;font-weight:800;color:var(--p)">${fmt(rqAmt(q),q.currency)}</span>${q.approved_amount!=null&&+q.approved_amount<+q.amount?`<span style="color:var(--soft);text-decoration:line-through">${fmt(q.amount,q.currency)}</span>`:''}<span style="color:var(--soft)">${RQ_PAY[q.payment_mode]||''}</span>${q.paid_at?'<span class="badge ba">pagado</span>':''}${rqLate(q)?`<span class="badge" style="background:#FEE2E2;color:#991B1B">⏰ menos de ${RQ_MIN_H} h</span>`:''}</div>
+      <div style="font-size:12px;margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${rqBadge(q.status)}<span style="font-size:15px;font-weight:800;color:var(--p)">${fmt(rqAmt(q),q.currency)}</span>${q.approved_amount!=null&&+q.approved_amount<+q.amount?`<span style="color:var(--soft);text-decoration:line-through">${fmt(q.amount,q.currency)}</span>`:''}<span style="color:var(--soft)">${RQ_PAY[q.payment_mode]||''}</span>${q.paid_at?'<span class="badge ba">pagado</span>':''}${rqLate(q)?`<span class="badge" style="background:#FEE2E2;color:#991B1B">⏰ menos de ${RQ_MIN_H} h</span>`:''}${rqOffBadge(q)}</div>
       ${['aprobado','cerrada'].includes(q.status)?rqBar(q,u):''}
       ${q.status==='rechazado'&&(q.general_comments||q.district_comments)?`<div style="margin-top:6px;font-size:12px;color:#991B1B">Motivo: ${esc(q.general_comments||q.district_comments)}</div>`:''}
     </div>
@@ -2958,18 +2988,22 @@ function rqCurChg(){document.getElementById('rq-sym').textContent=(SYM[CUR[vv('r
 async function openReq(id,pre){
   let q=null;
   if(id){try{q=(await sb(`expense_requests?id=eq.${id}&select=*`))[0]}catch(e){toast('Error: '+e.message,'err');return}}
+  if(!pre&&!(q&&q.source_ref)&&!canDirectReq()){
+    toast(q?'Esta solicitud se creó fuera de Plan de Acción. Pídela de nuevo desde Plan de Acción.':'Las solicitudes se piden desde Plan de Acción','err');
+    if(!q)window.open(PLAN_URL,'_blank','noopener');return}
   RQ.edit=q;RQ.quote=null;RQ.pre=pre||null;
-  const ct=q?.country||(pre&&RQ_COUNTRIES.includes(pre.pais)?pre.pais:null)||(RQ_COUNTRIES.includes(CU.country)?CU.country:'Honduras'),t=q?.tipo||pre?.tipo||(isOffice()?'operativo':'medicos');
+  const directo=!pre&&!(q&&q.source_ref);
+  const ct=q?.country||(pre&&RQ_COUNTRIES.includes(pre.pais)?pre.pais:null)||(RQ_COUNTRIES.includes(CU.country)?CU.country:'Honduras'),t=(()=>{const x=q?.tipo||pre?.tipo||(isOffice()?'operativo':'medicos');return directo&&!RQ_DIRECT_TIPOS.includes(x)?'operativo':x})();
   if(pre&&!q){q={title:pre.title,justification:pre.just,beneficiaries:pre.ben,event_date:/^\d{4}-\d{2}-\d{2}$/.test(pre.date||'')?pre.date:'',subtipo:pre.sub,audience:pre.aud||'medicos',institution:pre.inst||'',amount:(CUR[ct]==='USD'&&+pre.usd>0)?+pre.usd:'',_pre:true}}
   const mrNorm=x=>(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   const otroMR=pre&&pre.mr&&!mrNorm(CU.full_name).includes(mrNorm(pre.mr))&&!mrNorm(pre.mr).includes(mrNorm(CU.full_name));
   const mrNote=otroMR?`<div style="background:#FEF9C3;border:1px solid #FDE68A;border-radius:var(--rs);padding:10px 12px;margin-bottom:12px;font-size:13px;color:#854D0E">Esta actividad es de <strong>${esc(pre.mr)}</strong> (${esc(pre.pais||'')}). La solicitud queda a <strong>tu</strong> nombre y en la moneda de ${esc(pre.pais||'su país')}. Lo normal es que la pida el visitador responsable desde su cuenta.</div>`:'';
   const planNote=mrNote+((pre&&+pre.usd>0)?`<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:var(--rs);padding:10px 12px;margin-bottom:12px;font-size:13px;color:#1E3A8A">📋 Viene de <strong>Plan de Acción</strong>. Inversión planificada: <strong>US$ ${(+pre.usd).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>${CUR[ct]!=='USD'?`. Escribe el monto real en ${CUR[ct]}.`:'. Revisa los datos y envía.'}</div>`:(pre?`<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:var(--rs);padding:10px 12px;margin-bottom:12px;font-size:13px;color:#1E3A8A">📋 Viene de <strong>Plan de Acción</strong>. Completa el monto y envía.</div>`:''));
   document.getElementById('rq-t').textContent=q&&!q._pre?`${rqCode(q)} · ${q.status==='rechazado'?'Corregir y reenviar':'Editar solicitud'}`:'Nueva solicitud';
-  document.getElementById('rq-b').innerHTML=`${planNote}
+  document.getElementById('rq-b').innerHTML=`${planNote}${directo?`<div style="background:#F1F5F9;border:1px solid var(--bd);border-radius:var(--rs);padding:10px 12px;margin-bottom:12px;font-size:13px">🗂️ <strong>Solicitud administrativa</strong>: solo gastos operativos o de marca no ligados a profesionales de salud. Todo lo de médicos, enfermería, farmacia o maternidad se pide desde <a href="${PLAN_URL}" target="_blank" rel="noopener">Plan de Acción</a>.</div>`:''}
     ${q?.status==='rechazado'?`<div class="viol-box critical" style="margin-bottom:14px"><div class="viol-title critical">Rechazada: ${esc(q.general_comments||q.district_comments||'')}</div><div style="font-size:12px">Corrige lo necesario y vuelve a enviarla.</div></div>`:''}
     <div class="fg2">
-      <div><label class="flb">Tipo de gasto</label><select class="fse" id="rq-tipo" onchange="rqTipoChg()">${Object.entries(RQ_TIPO).map(([k,v])=>`<option value="${k}" ${t===k?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div><label class="flb">Tipo de gasto</label><select class="fse" id="rq-tipo" onchange="rqTipoChg()">${Object.entries(RQ_TIPO).filter(([k])=>!directo||RQ_DIRECT_TIPOS.includes(k)).map(([k,v])=>`<option value="${k}" ${t===k?'selected':''}>${v}</option>`).join('')}</select></div>
       <div><label class="flb">Detalle</label><select class="fse" id="rq-sub">${rqSubOpts(t,q?.subtipo)}</select></div>
       <div class="ffc" id="rq-audw" style="${t==='medicos'?'':'display:none'}"><label class="flb">Público ⚠️</label><select class="fse" id="rq-aud" onchange="rqAudChg()">${Object.entries(RQ_AUD).map(([k,v])=>`<option value="${k}" ${(q?.audience||pre?.aud||'medicos')===k?'selected':''}>${v}</option>`).join('')}</select></div>
       <div class="ffc"><label class="flb">¿Qué necesitas? ⚠️</label><input class="fin" id="rq-title" maxlength="120" value="${esc(q?.title)}" placeholder="Ej.: Cena científica con pediatras del Hospital Escuela"/></div>
@@ -3011,6 +3045,9 @@ async function uploadQuote(rid,dataUrl){
 }
 async function saveReq(status){
   const aud=vv('rq-tipo')==='medicos'?(vv('rq-aud')||'medicos'):null,inst=vv('rq-inst').trim();
+  const directo=!RQ.pre&&!RQ.edit?.source_ref;
+  if(directo&&!canDirectReq()){toast('Las solicitudes se piden desde Plan de Acción','err');return}
+  if(directo&&!RQ_DIRECT_TIPOS.includes(vv('rq-tipo'))){toast('Lo de profesionales de salud se pide desde Plan de Acción','err');return}
   const tipo=vv('rq-tipo'),title=vv('rq-title').trim(),just=vv('rq-just').trim(),ben=vv('rq-ben').trim(),amt=parseMonto(vv('rq-amt')),d1=vv('rq-d1')||null,d2=vv('rq-d2')||null;
   if(status==='enviado'){
     if(!title){toast('Escribe qué necesitas','err');return}
@@ -3330,6 +3367,7 @@ function renderPolicy(){
   </div></div>
   <div class="card" style="margin-bottom:16px"><div class="ch"><span class="ctitle">4.4 Solicitud previa de inversión y gastos</span></div><div class="cb">
     <ul style="font-size:13px;color:var(--soft);line-height:2;padding-left:16px">
+      <li>Toda solicitud nace en <strong>Plan de Acción</strong> (one to one, mesa redonda, solicitud puntual, patrocinio o congreso) para que la inversión quede registrada por médico. La app de gastos no permite crearlas directo. Única excepción: Controller, para gastos operativos o de marca no ligados a profesionales de salud</li>
       <li>Las solicitudes de profesionales de salud indican el <strong>público</strong> (médicos, enfermería y maternidad, dependientes de farmacia, administrativos de hospital) y la <strong>institución</strong></li>
       <li>Todo gasto que <strong>no</strong> sea de gira (alimentación, hotel), combustible, parqueo o peaje necesita una <strong>solicitud aprobada antes de gastar</strong>: atenciones y eventos con médicos, congresos, patrocinios, material, eventos de marca y gastos operativos</li>
       <li>Aprobación, igual para todos: <strong>jefe inmediato y luego Gerencia General</strong>. Nadie aprueba lo suyo: las del jefe pasan directo a Gerencia General y las de Gerencia General las aprueba Controller</li>
