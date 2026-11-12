@@ -367,7 +367,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#F8FAFF}
 <div id="app">
   <div class="sbov" id="sbov" onclick="closeSB()"></div>
   <aside class="sb" id="sb">
-    <div class="sb-logo"><h2>CASA FERNE</h2><p>Liquidación de Gastos · v3.3</p></div>
+    <div class="sb-logo"><h2>CASA FERNE</h2><p>Liquidación de Gastos · v3.4</p></div>
     <div class="sb-user"><div class="sb-nm" id="sb-nm">—</div><div class="rp" id="sb-rp"></div><button type="button" id="push-btn" class="btn bgh btn-sm" style="margin-top:10px;width:100%;justify-content:center" onclick="enablePush()">🔔 Activar notificaciones</button></div>
     <nav class="sb-nav" id="sb-nav"></nav>
     <div class="sb-ft"><button class="blogout" onclick="doLogout()"><svg viewBox="0 0 24 24" width="15" height="15" fill="white"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>Cerrar sesión</button></div>
@@ -1901,6 +1901,12 @@ function fFactorRow(sede,date){return FUEL.factors.filter(f=>f.sede===sede&&f.va
 const fFactor=(sede,date)=>parseFloat(fFactorRow(sede,date)?.factor)||0;
 // Factor por km de una moneda (promedio de sus sedes): sirve para comparar cargas hechas en otro país
 function curFactor(cur,date){const fs=FUEL.sedes.filter(s=>s.currency===cur).map(s=>fFactor(s.code,date)).filter(f=>f>0);return fs.length?fs.reduce((a,b)=>a+b,0)/fs.length:0}
+const CUR_FLG={HNL:'🇭🇳',USD:'🇸🇻',NIO:'🇳🇮',CRC:'🇨🇷',EUR:'🇪🇺'};
+// ¿El día toca otro país (paradas, pernocta, origen o donde amaneció)?
+function dayForeign(d,c){
+  const ctry=fSede(WP.sede)?.country,pc=id=>(FUEL.places||[]).find(p=>p.id===id)?.country;
+  return[...(d.stops||[]),d.end,d.from,c&&c.start,c&&c.end].some(id=>id&&id!=='sede'&&pc(id)&&pc(id)!==ctry);
+}
 // Si el plan pasa por otro país: su moneda (para mostrar cuánto cargar allá)
 function planOtherCur(){
   if(!WP)return null;const ctry=fSede(WP.sede)?.country,ids=new Set();
@@ -2335,7 +2341,10 @@ function renderWeek(){
   const days=WP.days.slice(0,n).map((d,i)=>{const c=C.days[i];
     const kindBtn=(k,l)=>`<button type="button" class="btn btn-sm ${d.k===k?'bsky':'bgh'}" style="flex:1;justify-content:center" onclick="wkSet(${i},'k','${k}')">${l}</button>`;
     return`<div class="mci" style="${d.k==='gira'?'border-left:4px solid var(--sky);':''}${d.k==='libre'?'opacity:.75;':''}">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><strong style="font-size:15px">${WK_DN[i]} ${niceD(c.date)}${WP_CHANGE&&c.date<hoyL?' <span class="badge" style="background:#F1F5F9;color:var(--soft)">ya pasó</span>':''}</strong><strong style="font-size:16px;color:var(--p)">${fmt(c.amt,cur)}</strong></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><strong style="font-size:15px">${WK_DN[i]} ${niceD(c.date)}${WP_CHANGE&&c.date<hoyL?' <span class="badge" style="background:#F1F5F9;color:var(--soft)">ya pasó</span>':''}</strong><span style="text-align:right;line-height:1.25">${(()=>{const oc=planOtherCur(),of=oc?curFactor(oc,WP.mon):0;
+        return oc&&of&&dayForeign(d,c)&&c.km>0
+          ?`<strong style="font-size:15px;color:var(--p);white-space:nowrap">${CUR_FLG[cur]||''} ${fmt(c.amt,cur)}</strong><br><strong style="font-size:15px;color:#0F766E;white-space:nowrap">${CUR_FLG[oc]||''} ${fmt(r2(c.km*of),oc)}</strong>`
+          :`<strong style="font-size:16px;color:var(--p)">${fmt(c.amt,cur)}</strong>`})()}</span></div>
       <div style="display:flex;gap:6px;margin-bottom:8px">${kindBtn('ciudad','🏙️ '+esc(pName(sp)))}${kindBtn('gira','🚗 Gira')}${kindBtn('libre','Sin ruta')}</div>
       ${d.k==='gira'?`
         <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><span style="font-size:12px;color:var(--soft);min-width:52px">Sale de</span>${WP_ADDING&&WP_ADDING.i===i&&WP_ADDING.j==='from'?`<input class="fin" id="wk-new" placeholder="Ej. Santa Rosa de Copán" style="flex:1;min-width:0"/>${wkCtrySel()}<button type="button" class="btn bsky btn-sm" onclick="wkFind(${i},'from')">Buscar</button><button type="button" class="btn bgh btn-sm" onclick="WP_ADDING=null;renderWeek()">✕</button>`:`<select class="fse" style="flex:1;min-width:0" onchange="wkFrom(${i},this.value)"><option value="" ${!d.from?'selected':''}>${c.slept===sp?'🏢 ':'🛏️ '}${esc(pName(c.slept))}</option>${placeOpts(d.from&&d.from!==c.slept?d.from:'',c.slept).replace('<option value="">Elige el lugar</option>','')}</select>`}</div>
@@ -2358,9 +2367,9 @@ function renderWeek(){
         const tot=r2(ls.reduce((a,x)=>a+x.pay,0));
         const oc=planOtherCur(),of=oc?curFactor(oc,WP.mon):0,oAmt=x=>r2((x.amount?x.pay/x.amount:1)*x.km*of);
         const oTxt=oc&&of?` · o ${fmt(r2(ls.reduce((a,x)=>a+oAmt(x),0)),oc)} si carga en ${esc(FUEL.sedes.find(s=>s.currency===oc)?.country||'')}`:'';
-        return`<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px"><div><div style="font-size:12px;opacity:.8">Total de la semana</div><div style="font-size:28px;font-weight:800;font-family:'DM Sans',sans-serif">${fmt(tot,cur)}</div>${oTxt?`<div style="font-size:12px;opacity:.9">${oTxt.slice(3)}</div>`:''}</div><div style="font-size:15px;font-weight:700">${kmf(C.km)} km</div></div>
-        ${ls.length>1||ls.some(x=>x.key!=='ciudad')?`<div style="margin-top:8px;border-top:1px solid rgba(255,255,255,.25);padding-top:6px">${ls.map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:2px 0"><span>⛽ ${x.key==='ciudad'?'Lunes':WK_DN[(new Date(x.when+'T12:00:00').getDay()+6)%7]} ${niceD(x.when)} · ${esc(x.label)}</span><strong style="white-space:nowrap;text-align:right">${fmt(x.pay,cur)}${oc&&of&&x.key!=='ciudad'?`<br><span style="font-weight:600;opacity:.85;font-size:12px">o ${fmt(oAmt(x),oc)}</span>`:''}</strong></div>`).join('')}</div>`:''}
-        ${oc&&of?`<div style="font-size:12px;opacity:.9;margin-top:4px">Puedes cargar en cualquiera de los dos países: cada factura se compara por los km que alcanza a cubrir.</div>`:''}
+        return`<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px"><div><div style="font-size:12px;opacity:.8">Total de la semana</div><div style="font-size:28px;font-weight:800;font-family:'DM Sans',sans-serif">${oTxt?(CUR_FLG[cur]||'')+' ':''}${fmt(tot,cur)}</div>${oTxt?`<div style="font-size:15px;font-weight:700">${CUR_FLG[oc]||''} ${fmt(r2(ls.reduce((a,x)=>a+oAmt(x),0)),oc)} <span style="font-size:12px;font-weight:400;opacity:.9">si carga todo en ${esc(FUEL.sedes.find(s=>s.currency===oc)?.country||'')}</span></div>`:''}</div><div style="font-size:15px;font-weight:700">${kmf(C.km)} km</div></div>
+        ${ls.length>1||ls.some(x=>x.key!=='ciudad')?`<div style="margin-top:8px;border-top:1px solid rgba(255,255,255,.25);padding-top:6px">${ls.map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:2px 0"><span>⛽ ${x.key==='ciudad'?'Lunes':WK_DN[(new Date(x.when+'T12:00:00').getDay()+6)%7]} ${niceD(x.when)} · ${esc(x.label)}</span><strong style="white-space:nowrap;text-align:right">${oc&&of&&x.key!=='ciudad'?(CUR_FLG[cur]||'')+' ':''}${fmt(x.pay,cur)}${oc&&of&&x.key!=='ciudad'?`<br><span style="font-weight:700;font-size:13px">${CUR_FLG[oc]||''} ${fmt(oAmt(x),oc)}</span>`:''}</strong></div>`).join('')}</div>`:''}
+        ${oc&&of?`<div style="font-size:12px;opacity:.9;margin-top:4px">Montos en la moneda de tu sede y en la del país de destino. Puedes cargar en cualquiera de los dos: cada factura se compara por los km que alcanza a cubrir.</div>`:''}
         ${WP.credit?`<div style="font-size:12px;opacity:.9;margin-top:4px">Incluye descuento de ${fmt(WP.credit,cur)}: saldo a favor de la empresa de la semana del ${niceD(WP.creditWeek)}</div>`:''}`})()}
       <div style="font-size:12px;opacity:.85">${C.missing.length?'Calculando distancias nuevas…':`Factor ${fmtF(C.factor,cur)}/km${fr?' · vigente desde '+fdate(fr.valid_from+'T12:00:00'):''}`}${C.unver?` · ${C.unver} tramo(s) nuevo(s) por validar`:''}</div>
     </div>
