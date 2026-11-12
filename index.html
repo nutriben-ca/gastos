@@ -367,7 +367,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#F8FAFF}
 <div id="app">
   <div class="sbov" id="sbov" onclick="closeSB()"></div>
   <aside class="sb" id="sb">
-    <div class="sb-logo"><h2>CASA FERNE</h2><p>Liquidación de Gastos · v3.2</p></div>
+    <div class="sb-logo"><h2>CASA FERNE</h2><p>Liquidación de Gastos · v3.3</p></div>
     <div class="sb-user"><div class="sb-nm" id="sb-nm">—</div><div class="rp" id="sb-rp"></div><button type="button" id="push-btn" class="btn bgh btn-sm" style="margin-top:10px;width:100%;justify-content:center" onclick="enablePush()">🔔 Activar notificaciones</button></div>
     <nav class="sb-nav" id="sb-nav"></nav>
     <div class="sb-ft"><button class="blogout" onclick="doLogout()"><svg viewBox="0 0 24 24" width="15" height="15" fill="white"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>Cerrar sesión</button></div>
@@ -2954,7 +2954,7 @@ async function loadReqs(){
           ${v.np?`<div style="font-size:12px;margin-top:2px;color:#92400E">+ ${fmt(v.pe,c)} en aprobación (${v.np})</div>`:''}</div>`).join('')}</div>`:''}
         ${off?`<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:var(--rs);padding:8px 12px;margin:4px 0 12px;font-size:12px;color:#92400E">⚠️ ${off} solicitud${off===1?'':'es'} de este período se crearon fuera de Plan de Acción (antes de la regla). No suman al plan del médico.</div>`:''}`;
     }else if(RQ.tab==='mias'){
-      sum.innerHTML=`<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:var(--rs);padding:10px 12px;margin-bottom:12px;font-size:13px;color:#1E3A8A">Toda solicitud se pide desde <a href="${PLAN_URL}" target="_blank" rel="noopener"><strong>Plan de Acción</strong></a> (one to one, mesas redondas, solicitudes puntuales, patrocinios y congresos), <strong>antes</strong> de gastar. Así queda registrada en el plan del médico. Gira, combustible y parqueo no necesitan solicitud. Cuando te la aprueben, liga tus facturas a la solicitud en tu liquidación.</div>`;
+      sum.innerHTML=`<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:var(--rs);padding:10px 12px;margin-bottom:12px;font-size:13px;color:#1E3A8A">Las solicitudes se piden, corrigen y envían desde <a href="${PLAN_URL}" target="_blank" rel="noopener"><strong>Plan de Acción</strong></a> (one to one, mesas redondas, solicitudes puntuales, patrocinios y congresos), <strong>antes</strong> de gastar. Aquí ves su estado y, cuando estén aprobadas, ligas tus facturas en la liquidación. Gira, combustible y parqueo no necesitan solicitud. Cuando te la aprueben, liga tus facturas a la solicitud en tu liquidación.</div>`;
     }else sum.innerHTML='';
     if(!rows.length){box.innerHTML=`<div class="card"><div class="cb"><div class="empty"><h3>${RQ.tab==='aprobar'?'Todo al día':RQ.tab==='pagar'?'Nada por pagar':'Sin solicitudes'}</h3><p>${RQ.tab==='mias'?'Pide tus solicitudes desde Plan de Acción':''}</p></div></div></div>`;ldr(false);updBadges();return}
     box.innerHTML=rows.map(rqCard).join('');
@@ -2964,7 +2964,8 @@ async function loadReqs(){
 function rqCard(q){
   const mine=q.user_id===CU.id,u=RQ.use[q.id]?.used||0;
   const btns=[`<button class="btn bgh btn-sm" onclick="viewReq('${q.id}')">Ver</button>`];
-  if(mine&&['borrador','rechazado'].includes(q.status)&&(q.source_ref||canDirectReq()))btns.push(`<button class="btn bp1 btn-sm" onclick="openReq('${q.id}')">${q.status==='rechazado'?'Corregir y reenviar':'Editar'}</button>`);
+  if(mine&&['borrador','rechazado'].includes(q.status)&&q.source_ref)btns.push(`<a class="btn bp1 btn-sm" href="${PLAN_URL}" target="_blank" rel="noopener">${q.status==='rechazado'?'Corregir en Plan de Acción':'Completar en Plan de Acción'}</a>`);
+  else if(mine&&['borrador','rechazado'].includes(q.status)&&canDirectReq())btns.push(`<button class="btn bp1 btn-sm" onclick="openReq('${q.id}')">${q.status==='rechazado'?'Corregir y reenviar':'Editar'}</button>`);
   if(canApReq(q))btns.push(`<button class="btn berr btn-sm" onclick="openReqAp('${q.id}','rechazar')">Rechazar</button><button class="btn bok btn-sm" onclick="openReqAp('${q.id}','aprobar')">✓ Aprobar</button>`);
   if(RQ.tab==='pagar'&&canPayReq())btns.push(`<button class="btn bok btn-sm" onclick="payReq('${q.id}')">${q.payment_mode==='anticipo'?'💵 Anticipo entregado':'🏦 Proveedor pagado'}</button>`);
   return`<div class="card" style="margin-bottom:10px"><div class="ch" style="align-items:flex-start;gap:10px;flex-wrap:wrap">
@@ -2988,6 +2989,7 @@ function rqCurChg(){document.getElementById('rq-sym').textContent=(SYM[CUR[vv('r
 async function openReq(id,pre){
   let q=null;
   if(id){try{q=(await sb(`expense_requests?id=eq.${id}&select=*`))[0]}catch(e){toast('Error: '+e.message,'err');return}}
+  if(q&&q.source_ref&&!pre){toast('Esta solicitud se corrige y se envía desde Plan de Acción','');window.open(PLAN_URL,'_blank','noopener');return}
   if(!pre&&!(q&&q.source_ref)&&!canDirectReq()){
     toast(q?'Esta solicitud se creó fuera de Plan de Acción. Pídela de nuevo desde Plan de Acción.':'Las solicitudes se piden desde Plan de Acción','err');
     if(!q)window.open(PLAN_URL,'_blank','noopener');return}
