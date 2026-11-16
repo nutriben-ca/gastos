@@ -670,7 +670,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#F8FAFF}
         <div><label class="flb">Empresa en Odoo</label><select class="fse" id="ex-ct"><option value="Honduras">🇭🇳 Casa Ferne S.A. (Honduras)</option><option value="El Salvador">🇸🇻 Casa Ferne S.A. El Salvador</option></select></div>
         <div><label class="flb">Mes</label><select class="fse" id="ex-mo"><option value="">Todos</option><option value="1">Enero</option><option value="2">Febrero</option><option value="3">Marzo</option><option value="4">Abril</option><option value="5">Mayo</option><option value="6">Junio</option><option value="7">Julio</option><option value="8">Agosto</option><option value="9">Septiembre</option><option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option></select></div>
         <div><label class="flb">Año</label><input class="fin" type="number" id="ex-yr" value="2026"/></div>
-        <div><label class="flb">Estado</label><select class="fse" id="ex-ap"><option value="aprobado_general">Solo aprobadas</option><option value="">Todas</option></select></div>
+        <div><label class="flb">Estado</label><select class="fse" id="ex-ap"><option value="aprobado_general">Solo aprobadas</option><option value="">Todas (sin rechazadas)</option></select></div>
         <div style="grid-column:1/-1"><label class="flb">Qué incluir</label><select class="fse" id="ex-pend"><option value="1">Solo las NO exportadas todavía (recomendado)</option><option value="0">Todas, incluso las ya exportadas (volver a descargar)</option></select></div>
       </div>
       <div style="background:#ECFDF5;border-radius:var(--rs);padding:11px;font-size:12px;color:#166534;margin-top:14px"><strong>Formato Odoo (Excel .xlsx):</strong> Fecha del gasto · Descripción · Empleado · Pagado por · Total · Estado · Moneda (HNL, USD, EUR) · Categoría Odoo. La empresa NO va en el archivo: Odoo usa la empresa activa de Keily, así que impórtalo con la empresa elegida aquí.</div>
@@ -843,7 +843,7 @@ function canAp(r){
 function isWeekend(dateStr){const d=new Date(dateStr+'T12:00:00');const day=d.getDay();return day===0||day===6}
 function openMo(id){document.getElementById(id).classList.add('on')}
 function closeMo(id){document.getElementById(id).classList.remove('on')}
-function toast(msg,t=''){const el=document.getElementById('toast');el.textContent=msg;el.className='toast on'+(t?' '+t:'');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('on'),3500)}
+function toast(msg,t='',ms=3500){const el=document.getElementById('toast');el.textContent=msg;el.className='toast on'+(t?' '+t:'');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('on'),ms)}
 function ldr(v){document.getElementById('ldr').style.display=v?'flex':'none'}
 function openSB(){document.getElementById('sb').classList.add('on');document.getElementById('sbov').classList.add('on')}
 function closeSB(){document.getElementById('sb').classList.remove('on');document.getElementById('sbov').classList.remove('on')}
@@ -1869,6 +1869,8 @@ async function saveRep(status){
     if(HL.length)await sb('hcp_attentions',{method:'POST',prefer:'return=minimal',body:HL.map(h=>({ocr_amount:h.ocr_amount??null,report_id:rid,request_id:h.request_id||null,payment_method:pm(h),attention_date:h.attention_date,hcp_name:h.hcp_name||'—',hcp_type:h.hcp_type,specialty:h.specialty,institution:h.institution,city:h.city,activity_type:h.activity_type,amount:parseFloat(h.amount)||0,notes:h.notes,vendor:h.vendor||null,invoice_number:h.invoice_number||null,invoice_image_url:h.invoice_image_url||null,event_image_url:h.event_image_url||null,attendees:h.attendees.filter(a=>(a.name||'').trim())}))});
     await saveTrips(rid);
     await sb(`expense_reports?id=eq.${rid}`,{method:'PATCH',prefer:'return=minimal',body:{...rData,status}});
+    // Si se corrigió una liquidación ya exportada, vuelve a quedar pendiente de exportar (no bloquea el guardado si falla)
+    try{await sb(`expense_reports?id=eq.${rid}&exported_at=not.is.null`,{method:'PATCH',prefer:'return=minimal',body:{exported_at:null}})}catch(_){console.warn('No se pudo limpiar exported_at')}
     closeMo('mo-report');
     if(status==='enviado')notifyStatus(rid);
     toast(status==='enviado'?'✓ Liquidación enviada para aprobación':'✓ Gastos guardados como borrador','ok');
@@ -3422,13 +3424,25 @@ async function doExport(){
     if(mo)q+=`&period_month=eq.${mo}`;
     if(yr)q+=`&period_year=eq.${yr}`;
     if(ap)q+=`&status=eq.${ap}`;
-    const soloPend=vv('ex-pend')!=='0';
-    const todas=await sb(q);
-    const rpts=todas.filter(r=>odooCompany(r)===ct&&!(soloPend&&r.exported_at));
+    let soloPend=vv('ex-pend')!=='0';
+    // Las rechazadas nunca van a Odoo, aunque se elija "Todas"
+    const todas=(await sb(q)).filter(r=>r.status!=='rechazado');
+    let rpts=todas.filter(r=>odooCompany(r)===ct&&!(soloPend&&r.exported_at));
+    if(!rpts.length&&soloPend){
+      // Hay liquidaciones que coinciden pero ya fueron exportadas: ofrecer re-descargarlas
+      const yaExp=todas.filter(r=>odooCompany(r)===ct&&r.exported_at);
+      if(yaExp.length){
+        const gente=[...new Set(yaExp.map(r=>r.expense_profiles?.full_name||'—'))].slice(0,8).join(', ');
+        ldr(false);
+        if(!confirm(`No hay liquidaciones pendientes para ${ct}, pero ${yaExp.length} ya fue(ron) exportada(s) antes (${gente}).\n\nSi vuelves a descargarlas y ya las cargaste en Odoo, se duplicarán allá.\n\n¿Descargarlas de nuevo?`))return;
+        ldr(true);soloPend=false;
+        rpts=todas.filter(r=>odooCompany(r)===ct);
+      }
+    }
     if(!rpts.length){
       const otras={};todas.filter(r=>!(soloPend&&r.exported_at)&&odooCompany(r)!==ct).forEach(r=>{const c=odooCompany(r);otras[c]=(otras[c]||0)+1});
       const otraTxt=Object.entries(otras).map(([k,v])=>`${k} (${v})`).join(', ');
-      toast((soloPend?'No hay liquidaciones pendientes para '+ct:'Sin datos para '+ct)+(otraTxt?'. Sí hay en: '+otraTxt+' — cambia "Empresa en Odoo"':''),'err');
+      toast((soloPend?'No hay liquidaciones pendientes para '+ct:'Sin datos para '+ct)+(otraTxt?'. Sí hay en: '+otraTxt+' — cambia "Empresa en Odoo"':''),'err',9000);
       ldr(false);return}
     const ids=rpts.map(r=>r.id);
     const items=await sb(`expense_items?report_id=in.(${ids.join(',')})&order=expense_date.asc`);
