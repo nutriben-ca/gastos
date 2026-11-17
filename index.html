@@ -385,7 +385,6 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#F8FAFF}
       <div class="ph">
         <div><div class="ph-title">Dashboard</div><div class="ph-sub">Resumen de liquidaciones del equipo</div></div>
         <div class="ph-act">
-          <select class="fin" id="f-per" onchange="loadDash()" style="width:210px;font-size:12px;padding:8px 10px" aria-label="Periodo"><option value="">Todos los periodos</option></select>
           <select class="fin" id="f-ct" onchange="loadDash()" style="width:145px;font-size:12px;padding:8px 10px"><option value="">Todos los países</option><option value="Honduras">🇭🇳 Honduras</option><option value="El Salvador">🇸🇻 El Salvador</option><option value="Nicaragua">🇳🇮 Nicaragua</option><option value="Costa Rica">🇨🇷 Costa Rica</option><option value="Europa">🇪🇺 Europa</option><option value="Internacional">🌎 Otro país</option></select>
           <button class="btn bp1" onclick="openMo('mo-export')"><svg viewBox="0 0 24 24" width="14" height="14" fill="white"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>Exportar Odoo</button>
         </div>
@@ -395,7 +394,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#F8FAFF}
       <div id="dash-res"></div>
       <div class="card">
         <div class="ch"><span class="ctitle">Liquidaciones de Gastos</span>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><select class="fin" id="f-us" onchange="loadDash()" aria-label="Filtrar por colaborador" style="width:190px;max-width:100%;font-size:12px;padding:7px 10px"><option value="">Todos los colaboradores</option></select><select class="fin" id="f-st" onchange="loadDash()" style="width:160px;font-size:12px;padding:7px 10px"><option value="">Todos los estados</option><option value="enviado">Enviadas</option><option value="aprobado_distrito">Aprobadas Jefe</option><option value="aprobado_general">Aprobadas Gerencia</option><option value="rechazado">Rechazadas</option></select></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><select class="fin" id="f-per" onchange="loadDash()" style="width:190px;max-width:100%;font-size:12px;padding:8px 10px" aria-label="Periodo"><option value="">Todos los periodos</option></select><select class="fin" id="f-us" onchange="loadDash()" aria-label="Filtrar por colaborador" style="width:190px;max-width:100%;font-size:12px;padding:7px 10px"><option value="">Todos los colaboradores</option></select><select class="fin" id="f-st" onchange="loadDash()" style="width:160px;font-size:12px;padding:7px 10px"><option value="">Todos los estados</option><option value="enviado">Enviadas</option><option value="aprobado_distrito">Aprobadas Jefe</option><option value="aprobado_general">Aprobadas Gerencia</option><option value="rechazado">Rechazadas</option></select></div>
         </div>
         <div class="tw"><table><thead><tr><th>Colaborador</th><th>País</th><th>Período</th><th>Total</th><th>Adelanto</th><th>Saldo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="dash-tb"></tbody></table></div>
         <div class="mcl" id="dash-mc" style="padding:12px"></div>
