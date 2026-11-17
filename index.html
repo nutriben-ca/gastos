@@ -385,12 +385,14 @@ tr:last-child td{border-bottom:none}tr:hover td{background:#F8FAFF}
       <div class="ph">
         <div><div class="ph-title">Dashboard</div><div class="ph-sub">Resumen de liquidaciones del equipo</div></div>
         <div class="ph-act">
+          <select class="fin" id="f-per" onchange="loadDash()" style="width:210px;font-size:12px;padding:8px 10px" aria-label="Periodo"><option value="">Todos los periodos</option></select>
           <select class="fin" id="f-ct" onchange="loadDash()" style="width:145px;font-size:12px;padding:8px 10px"><option value="">Todos los países</option><option value="Honduras">🇭🇳 Honduras</option><option value="El Salvador">🇸🇻 El Salvador</option><option value="Nicaragua">🇳🇮 Nicaragua</option><option value="Costa Rica">🇨🇷 Costa Rica</option><option value="Europa">🇪🇺 Europa</option><option value="Internacional">🌎 Otro país</option></select>
           <button class="btn bp1" onclick="openMo('mo-export')"><svg viewBox="0 0 24 24" width="14" height="14" fill="white"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>Exportar Odoo</button>
         </div>
       </div>
       <div id="dash-exp"></div>
       <div class="stats" id="dash-stats"></div>
+      <div id="dash-res"></div>
       <div class="card">
         <div class="ch"><span class="ctitle">Liquidaciones de Gastos</span>
           <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><select class="fin" id="f-us" onchange="loadDash()" aria-label="Filtrar por colaborador" style="width:190px;max-width:100%;font-size:12px;padding:7px 10px"><option value="">Todos los colaboradores</option></select><select class="fin" id="f-st" onchange="loadDash()" style="width:160px;font-size:12px;padding:7px 10px"><option value="">Todos los estados</option><option value="enviado">Enviadas</option><option value="aprobado_distrito">Aprobadas Jefe</option><option value="aprobado_general">Aprobadas Gerencia</option><option value="rechazado">Rechazadas</option></select></div>
@@ -1126,11 +1128,24 @@ async function loadDash(){
     {window.DASH_PP=window.DASH_PP||{};all.forEach(r=>{if(r.user_id)DASH_PP[r.user_id]=r.expense_profiles?.full_name||'—'});
      const fs=document.getElementById('f-us'),sel=fs.value;
      fs.innerHTML='<option value="">Todos los colaboradores</option>'+Object.entries(DASH_PP).sort((a,b)=>a[1].localeCompare(b[1],'es')).map(([id,n])=>`<option value="${id}" ${id===sel?'selected':''}>${esc(n)}</option>`).join('');}
-    const us=vv('f-us'),rpts=us?all.filter(r=>r.user_id===us):all;
+    // Selector de periodo: mes completo o quincena; las opciones salen de los datos cargados
+    {const ps=document.getElementById('f-per'),prev=ps.value,meses={};
+     all.forEach(r=>{const mk=mkOf(r);(meses[mk]=meses[mk]||new Set()).add(r.cycle)});
+     const opts=[];
+     Object.keys(meses).sort().reverse().forEach(mk=>{
+       const[y,m]=mk.split('-');
+       opts.push(`<option value="${mk}">${MON[+m]} ${y}</option>`);
+       if(meses[mk].has('primera'))opts.push(`<option value="${mk}-1">   1ª quincena</option>`);
+       if(meses[mk].has('segunda'))opts.push(`<option value="${mk}-2">   2ª quincena</option>`);
+     });
+     ps.innerHTML='<option value="">Todos los periodos</option>'+opts.join('');
+     if([...ps.options].some(o=>o.value===prev))ps.value=prev;}
+    const us=vv('f-us'),pv=vv('f-per'),rpts=(us?all.filter(r=>r.user_id===us):all).filter(r=>matchPer(r,pv));
     // Pendientes: las que te toca aprobar a ti, y aparte las que esperan al jefe inmediato o a Gerencia
     const pend=rpts.filter(r=>canAp(r)).length,enJefe=rpts.filter(r=>r.status==='enviado'&&!canAp(r)).length,enGG=rpts.filter(r=>r.status==='aprobado_distrito'&&!canAp(r)).length;
     const appr=rpts.filter(r=>r.status==='aprobado_general').length;
     const viols=rpts.filter(r=>(r.policy_violations||0)>0).length;
+    renderResumen(rpts);
     document.getElementById('dash-stats').innerHTML=`
       <div class="stat"><div class="stat-ico" style="background:#EFF6FF"><svg viewBox="0 0 24 24" width="19" height="19" fill="#3B82F6"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg></div><div class="stat-val">${rpts.length}</div><div class="stat-lbl">Total liquidaciones</div></div>
       <div class="stat"><div class="stat-ico" style="background:#FEF9C3"><svg viewBox="0 0 24 24" width="19" height="19" fill="#D97706"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg></div><div class="stat-val" style="color:#D97706">${pend}</div><div class="stat-lbl">Pendientes contigo</div>${enJefe||enGG?`<div style="font-size:11px;color:var(--soft);margin-top:4px">${[enJefe?enJefe+" con el jefe inmediato":"",enGG?enGG+" con Gerencia General":""].filter(Boolean).join(" · ")}</div>`:""}</div>
@@ -1170,6 +1185,70 @@ async function loadDash(){
       </div></div>`).join('');
   }catch(e){toast('Error: '+e.message,'err')}
   ldr(false);
+}
+
+// ── RESUMEN EJECUTADO POR RUBRO Y MES ──
+// Suma lo registrado en las liquidaciones (sin rechazadas ni borradores), separado por moneda.
+// La base no guarda presupuesto por rubro, así que aquí solo va lo ejecutado.
+const RES_OK=['enviado','aprobado_distrito','aprobado_general'];
+const mkOf=r=>`${r.period_year}-${String(r.period_month).padStart(2,'0')}`;
+function matchPer(r,pv){
+  if(!pv)return true;
+  const[y,m,c]=pv.split('-');
+  if(+r.period_year!==+y||+r.period_month!==+m)return false;
+  if(!c)return true;
+  return c==='1'?r.cycle==='primera':r.cycle==='segunda';
+}
+// PostgREST devuelve máximo 1000 filas por consulta: partimos en lotes de liquidaciones
+async function fetchByReports(table,sel,ids){
+  const cs=[];for(let i=0;i<ids.length;i+=25)cs.push(ids.slice(i,i+25));
+  const parts=await Promise.all(cs.map(c=>sb(`${table}?select=${sel}&report_id=in.(${c.join(',')})`)));
+  if(parts.some(p=>p.length>=1000))throw new Error(`${table}: consulta truncada, reduce el periodo`);
+  return parts.flat();
+}
+async function renderResumen(rpts){
+  const el=document.getElementById('dash-res');
+  if(!el)return;
+  const ok=rpts.filter(r=>RES_OK.includes(r.status));
+  if(!ok.length){el.innerHTML='';return}
+  try{
+    const ids=ok.map(r=>r.id),byId={};ok.forEach(r=>byId[r.id]=r);
+    const[items,hcps]=await Promise.all([
+      fetchByReports('expense_items','report_id,category,amount',ids),
+      fetchByReports('hcp_attentions','report_id,amount',ids)
+    ]);
+    const agg={},liqT={};   // agg[moneda][rubro][mes] = monto ; liqT[moneda][mes] = total de liquidaciones
+    const add=(cur,key,mk,amt)=>{
+      agg[cur]=agg[cur]||{};agg[cur][key]=agg[cur][key]||{};
+      agg[cur][key][mk]=(agg[cur][key][mk]||0)+amt;
+    };
+    items.forEach(x=>{const r=byId[x.report_id];if(r)add(r.currency,x.category||'otro',mkOf(r),parseFloat(x.amount)||0)});
+    hcps.forEach(x=>{const r=byId[x.report_id];if(r)add(r.currency,'hcp',mkOf(r),parseFloat(x.amount)||0)});
+    ok.forEach(r=>{const c=r.currency,mk=mkOf(r);liqT[c]=liqT[c]||{};liqT[c][mk]=(liqT[c][mk]||0)+(parseFloat(r.total_amount)||0)});
+    const RUB=[...Object.keys(CAT),'hcp'];
+    const rank=k=>{const i=RUB.indexOf(k);return i<0?99:i};
+    const LBL=k=>k==='hcp'?'🩺 Atenciones a profesionales':(CAT[k]||k);
+    const mkLbl=mk=>{const[y,m]=mk.split('-');return MON[+m].slice(0,3)+' '+y};
+    let html='';
+    Object.keys(agg).sort().forEach(cur=>{
+      const keys=Object.keys(agg[cur]).sort((a,b)=>rank(a)-rank(b));
+      const months=Object.keys(liqT[cur]||{}).sort();
+      const colSum=mk=>keys.reduce((s,k)=>s+(agg[cur][k][mk]||0),0);
+      const rowSum=k=>months.reduce((s,mk)=>s+(agg[cur][k][mk]||0),0);
+      const grand=keys.reduce((s,k)=>s+rowSum(k),0);
+      const liq=months.reduce((s,mk)=>s+(liqT[cur][mk]||0),0);
+      const diff=liq-grand;
+      html+=`<div style="padding:14px 18px;border-bottom:1px solid var(--bd)">
+        <div style="font-size:12px;font-weight:700;color:var(--soft);margin-bottom:8px">${CUR_FLG[cur]||''} ${cur}</div>
+        <div style="overflow-x:auto"><table><thead><tr><th>Rubro</th>${months.map(mk=>`<th>${mkLbl(mk)}</th>`).join('')}<th>Total</th></tr></thead><tbody>
+        ${keys.map(k=>`<tr><td><strong>${LBL(k)}</strong></td>${months.map(mk=>`<td>${agg[cur][k][mk]?fmt(agg[cur][k][mk],cur):'—'}</td>`).join('')}<td><strong>${fmt(rowSum(k),cur)}</strong></td></tr>`).join('')}
+        <tr style="background:#F1F5F9"><td><strong>Total ejecutado</strong></td>${months.map(mk=>`<td><strong>${fmt(colSum(mk),cur)}</strong></td>`).join('')}<td><strong>${fmt(grand,cur)}</strong></td></tr>
+        </tbody></table></div>
+        ${Math.abs(diff)>0.005?`<div style="font-size:12px;color:var(--err);margin-top:8px">⚠️ No cuadra con el total de liquidaciones (${fmt(liq,cur)}): diferencia ${fmt(diff,cur)}</div>`:''}
+      </div>`;
+    });
+    el.innerHTML=`<div class="card"><div class="ch"><span class="ctitle">Resumen ejecutado por rubro y mes</span><span style="font-size:11px;color:var(--soft)">Excluye rechazadas y borradores</span></div>${html}</div>`;
+  }catch(e){el.innerHTML=`<div class="ebox">No se pudo calcular el resumen: ${esc(e.message)}</div>`}
 }
 
 // ── MY REPORTS ──
