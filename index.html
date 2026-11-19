@@ -2601,7 +2601,7 @@ async function renderTeam(){
 const KM_TOL=0.15,FUEL_TOL={HNL:20,USD:1};
 // El plan semanal empezó a usarse la semana del 19 de octubre de 2026: las semanas anteriores no se cruzan
 const FUEL_PLAN_START='2026-10-19';
-async function fuelCross(userId,y,m,cycle,cur=null,extraDates=[],soloEstas=false){
+async function fuelCross(userId,y,m,cycle,cur=null,extraDates=[],soloEstas=false,rid=null){
   const last=new Date(y,m,0).getDate(),pad=n=>String(n).padStart(2,'0');
   const a=cycle==='segunda'?`${y}-${pad(m)}-16`:`${y}-${pad(m)}-01`,b=cycle==='segunda'?`${y}-${pad(m)}-${pad(last)}`:`${y}-${pad(m)}-15`;
   const weeks=[];if(!soloEstas)for(let w=monOf(a);w<=b;w=addDays(w,7))if(w>=FUEL_PLAN_START)weeks.push(w);
@@ -2611,7 +2611,7 @@ async function fuelCross(userId,y,m,cycle,cur=null,extraDates=[],soloEstas=false
   const[plans,reps]=await Promise.all([sb(`fuel_plans?user_id=eq.${userId}&week_monday=gte.${addDays(weeks[0],-7)}&week_monday=lte.${weeks[weeks.length-1]}&select=*`),sb(`expense_reports?user_id=eq.${userId}&status=neq.rechazado&select=id`)]);
   // cur: liquidación abierta en el formulario (sus cargas aún no están guardadas)
   const rids=reps.map(r=>r.id).filter(id=>!cur||id!==cur.rid);
-  let loads=[];if(rids.length)loads=await sb(`expense_items?report_id=in.(${rids.join(',')})&category=eq.combustible&expense_date=gte.${weeks[0]}&expense_date=lte.${addDays(weeks[weeks.length-1],20)}&select=expense_date,amount,currency,odometer_km,odometer_unit&order=expense_date.asc`);
+  let loads=[];if(rids.length)loads=await sb(`expense_items?report_id=in.(${rids.join(',')})&category=eq.combustible&expense_date=gte.${addDays(weeks[0],-14)}&expense_date=lte.${addDays(weeks[weeks.length-1],20)}&select=report_id,expense_date,amount,currency,odometer_km,odometer_unit&order=expense_date.asc`);
   if(cur)loads=loads.concat(cur.loads).sort((x,y2)=>(x.expense_date||'').localeCompare(y2.expense_date||''));
   return weeks.map(w=>{
     const p=plans.find(x=>x.week_monday===w),pv=plans.find(x=>x.week_monday===addDays(w,-7)),e=planEff(p),credit=planCredit(pv);
@@ -2623,11 +2623,15 @@ async function fuelCross(userId,y,m,cycle,cur=null,extraDates=[],soloEstas=false
     const L0=inW.find(l=>l.odometer_km!=null),L1=loads.find(l=>l.expense_date>addDays(w,6)&&l.odometer_km!=null);
     const u0=L0?.odometer_unit||'km',u1=L1?.odometer_unit||'km',sameU=!L0||!L1||u0===u1;
     const kmReal=L0&&L1&&sameU?r2((L1.odometer_km-L0.odometer_km)*(u0==='mi'?MI_KM:1)):null;
+    // El odómetro no se lee cada lunes: el km real de la semana cae entre dos cotas.
+    // Mínimo = desde la primera carga de la semana (no cuenta lo manejado antes de cargar); máximo = desde la última carga anterior (suma el fin de semana).
+    const Lp=[...loads].reverse().find(l=>l.expense_date<w&&l.odometer_km!=null);
+    const kmHi=Lp&&L1&&(Lp.odometer_unit||'km')===u1?r2((L1.odometer_km-Lp.odometer_km)*(u1==='mi'?MI_KM:1)):null;
     const kmUnitNote=L0&&L1&&!sameU;
     // Mientras no llega la carga del lunes siguiente: km recorridos entre la primera y la última carga de la semana
     const odoW=inW.filter(l=>l.odometer_km!=null),Ln=odoW[odoW.length-1];
     const kmParcial=kmReal==null&&L0&&Ln&&Ln!==L0&&(Ln.odometer_unit||'km')===u0?r2((Ln.odometer_km-L0.odometer_km)*(u0==='mi'?MI_KM:1)):null;
-    const lecturas=odoW.map(l=>`${Number(l.odometer_km).toLocaleString('es-HN')} (${niceD(l.expense_date)})`).join(' → ');
+    const lecturas=odoW.map(l=>`${Number(l.odometer_km).toLocaleString('es-HN')} (${niceD(l.expense_date)})`).join(' → ')+(kmReal!=null&&kmHi!=null&&kmHi>kmReal?` · rango posible ${kmf(kmReal)}–${kmf(kmHi)} km`:'');
     const permitido=e?Math.max(0,r2(e.amount-credit)):null;
     const flags=[];
     Object.entries(extra).forEach(([c,a])=>flags.push([`Incluye ${fmt(r2(a),c)} cargados en ${FUEL.sedes.find(s=>s.currency===c)?.country||c} (equivale a ${fmt(r2(a/curFactor(c,w)*pF),pCur)} en km)`,'info']));
@@ -2643,7 +2647,12 @@ async function fuelCross(userId,y,m,cycle,cur=null,extraDates=[],soloEstas=false
     const fCur=FUEL.sedes.find(s=>s.code===p?.sede)?.country==='El Salvador'?'USD':'HNL',fTol=FUEL_TOL[fCur];
     if(permitido!=null&&cargado>permitido+fTol)flags.push([`Cargó ${fmt(r2(cargado-permitido),fCur)} más de lo permitido`,'err']);
     else if(permitido!=null&&cargado>permitido+0.01)flags.push([`Cargó ${fmt(r2(cargado-permitido),fCur)} sobre el plan (dentro del margen de ${fmt(fTol,fCur)})`,'info']);
-    let dev=null;if(kmReal!=null&&e&&e.km>0){dev=(kmReal-e.km)/e.km;if(dev<-KM_TOL)flags.push([`Recorrió ${Math.round(-dev*100)}% menos km que su plan`,'err']);else if(dev>KM_TOL)flags.push([`Odómetro +${Math.round(dev*100)}% vs. plan (incluye uso personal)`,'info'])}
+    let dev=null;if(kmReal!=null&&e&&e.km>0){dev=(kmReal-e.km)/e.km;if(dev<-KM_TOL){const devHi=kmHi!=null?(kmHi-e.km)/e.km:dev;
+      if(devHi<-KM_TOL)flags.push([`Recorrió ${Math.round(-devHi*100)}% menos km que su plan`,'err']);
+      else flags.push([`Odómetro ${Math.round(-dev*100)}% bajo el plan desde la primera carga, pero dentro del plan si se cuenta desde la carga anterior (${kmf(kmReal)}–${kmf(kmHi)} km)`,'info'])}else if(dev>KM_TOL)flags.push([`Odómetro +${Math.round(dev*100)}% vs. plan (incluye uso personal)`,'info'])}
+    if(rid){const cierre=inW[inW.length-1];
+      if(cierre&&cierre.report_id&&cierre.report_id!==rid){const i=flags.findIndex(f=>f[0].startsWith('Recorrió'));
+        if(i>-1){flags.splice(i,1,[`Km de la semana: se evalúan en la liquidación de la carga de cierre (${niceD(cierre.expense_date)})`,'info'])}}}
     {const vistos={};odoW.forEach(l=>{const k=l.odometer_km+'|'+(l.odometer_unit||'km');vistos[k]=(vistos[k]||0)+1});if(Object.values(vistos).some(n=>n>1))flags.push(['Dos cargas con el mismo odómetro: posible duplicado','err'])}
     if(kmUnitNote)flags.push(['Odómetro en km y en millas: revisar si cambió de vehículo','warn']);
     else if(inW.length&&kmReal==null)flags.push(['Km reales: falta la primera carga de la semana siguiente','info']);
@@ -2672,7 +2681,7 @@ async function viewRep(id){
     const hcps=await sb(`hcp_attentions?report_id=eq.${id}&order=attention_date.asc`);
     let trips=[];if(FUEL_LIQ&&FUEL.ok){try{trips=await sb(`report_trips?report_id=eq.${id}&order=trip_date.asc,created_at.asc`)}catch(_){}}
     const ep=r.expense_profiles,cur=r.currency;
-    let cross='';if(FUEL.ok&&FUEL.sedes.some(s=>s.country===r.country)&&items.some(i=>i.category==='combustible')){try{if(!FUEL.legsOk)await loadLegs();cross=fuelCrossHtml(await fuelCross(r.user_id,r.period_year,r.period_month,r.cycle,null,items.filter(i=>i.category==='combustible').map(i=>i.expense_date),true),cur)}catch(_){}}
+    let cross='';if(FUEL.ok&&FUEL.sedes.some(s=>s.country===r.country)&&items.some(i=>i.category==='combustible')){try{if(!FUEL.legsOk)await loadLegs();cross=fuelCrossHtml(await fuelCross(r.user_id,r.period_year,r.period_month,r.cycle,null,items.filter(i=>i.category==='combustible').map(i=>i.expense_date),true,id),cur)}catch(_){}}
     const rqh=await rqReportHtml(items,hcps,cur).catch(()=>'');
     // Combustible: misma lectura de odómetro en otra liquidación (posible carga duplicada)
     let dupH='';try{const odo=[...new Set(items.filter(i=>i.category==='combustible'&&i.odometer_km!=null).map(i=>i.odometer_km))];
