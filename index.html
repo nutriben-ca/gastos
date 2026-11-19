@@ -2531,13 +2531,21 @@ function renderLegReview(){
   box.innerHTML=pend.length?pend.map(l=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--bd)">
       <div style="flex:1 1 180px;min-width:0;font-size:14px"><strong>${esc(pName(l.a))} ↔ ${esc(pName(l.b))}</strong><div style="font-size:12px;color:var(--soft)">${l.source==='osm'?'Calculado por carretera (mapa)':'Corregido a mano'} · ${fdate(l.created_at)}</div></div>
       <input class="fin" id="lk-${l.id}" inputmode="decimal" value="${l.km}" style="flex:0 0 90px" aria-label="Km"/><span style="font-size:13px">km</span>
-      <button type="button" class="btn bok btn-sm" onclick="validateLeg('${l.id}')">✓ Validar</button></div>`).join('')
+      <button type="button" class="btn bok btn-sm" onclick="validateLeg('${l.id}')">✓ Validar</button><button type="button" class="btn berr btn-sm" onclick="discardLeg('${l.id}')">Descartar</button></div>`).join('')
     :'<div style="font-size:13px;color:var(--soft)">✓ No hay tramos nuevos por validar</div>';
 }
 async function validateLeg(id){
   const km=parseMonto(document.getElementById('lk-'+id)?.value);if(!(km>0&&km<2000)){toast('Km inválidos','err');return}
   ldr(true);
   try{const r=await sb(`fuel_legs?id=eq.${id}`,{method:'PATCH',body:{km,verified:true}});const i=FUEL.legs.findIndex(l=>l.id===id);if(i>-1&&r[0])FUEL.legs[i]=r[0];toast('✓ Tramo validado','ok');renderLegReview();renderWeek()}
+  catch(e){toast('Error: '+e.message,'err')}
+  ldr(false);
+}
+async function discardLeg(id){
+  const l=(FUEL.legs||[]).find(x=>x.id===id);if(!l||l.verified)return;
+  if(!confirm(`¿Descartar el tramo ${pName(l.a)} ↔ ${pName(l.b)} (${l.km} km)? Se recalculará la próxima vez que alguien lo necesite. Los planes ya guardados conservan sus km.`))return;
+  ldr(true);
+  try{await sb(`fuel_legs?id=eq.${id}&verified=eq.false`,{method:'DELETE',prefer:'return=minimal'});FUEL.legs=FUEL.legs.filter(x=>x.id!==id);toast('Tramo descartado','ok');renderLegReview();renderWeek()}
   catch(e){toast('Error: '+e.message,'err')}
   ldr(false);
 }
@@ -2808,7 +2816,7 @@ const reembLine=(r)=>(parseFloat(r.reimburse_amount)||0)>0?(r.reimbursed_at?`<sp
 
 // ── APPROVALS ──
 // Aprobación masiva: solo liquidaciones sin alertas de política
-let AP_LIST=[],AP_SEL=new Set(),AP_NOPHOTO=new Set();
+let AP_LIST=[],AP_ALL=[],AP_ITEMS={},AP_USER='',AP_SEL=new Set(),AP_NOPHOTO=new Set();
 const apBulkOk=r=>!(r.policy_violations>0)&&!AP_NOPHOTO.has(r.id);
 function apSel(id,on){on?AP_SEL.add(id):AP_SEL.delete(id);apBulkBtn()}
 function apSelAll(on){AP_SEL=new Set(on?AP_LIST.filter(apBulkOk).map(r=>r.id):[]);loadApRender()}
@@ -2839,24 +2847,43 @@ async function loadAp(){
     let rpts=(await sb(q)).filter(x=>canAp(x));
     const wrap=document.getElementById('ap-wrap');
     if(!rpts.length){wrap.innerHTML=`<div class="card"><div class="cb"><div class="empty"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg><h3>Todo al día</h3><p>Sin liquidaciones pendientes</p></div></div></div>`;updBadges();ldr(false);return}
-    // líneas sin foto de factura: también se revisan una por una
-    AP_NOPHOTO=new Set();try{const its=await sb(`expense_items?report_id=in.(${rpts.map(r=>r.id).join(',')})&select=report_id,invoice_image_url,no_invoice`);its.forEach(i=>{if(!i.invoice_image_url&&!i.no_invoice)AP_NOPHOTO.add(i.report_id)})}catch(_){}
-    AP_LIST=rpts;AP_SEL=new Set([...AP_SEL].filter(id=>rpts.some(r=>r.id===id&&apBulkOk(r))));
-    const nOk=rpts.filter(apBulkOk).length;
-    wrap.innerHTML=(nOk>1?`<div class="card" style="margin-bottom:12px;position:sticky;top:calc(56px + env(safe-area-inset-top,0px));z-index:3"><div class="cb" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px">
+    // líneas de cada liquidación: categoría, descripción y monto; las que no tienen foto de factura también se revisan una por una
+    AP_NOPHOTO=new Set();AP_ITEMS={};try{const its=await sb(`expense_items?report_id=in.(${rpts.map(r=>r.id).join(',')})&select=report_id,category,description,vendor,amount,expense_date,invoice_image_url,no_invoice&order=expense_date.asc`);its.forEach(i=>{(AP_ITEMS[i.report_id]=AP_ITEMS[i.report_id]||[]).push(i);if(!i.invoice_image_url&&!i.no_invoice)AP_NOPHOTO.add(i.report_id)})}catch(_){}
+    AP_ALL=rpts;
+    if(AP_USER&&!rpts.some(r=>r.user_id===AP_USER))AP_USER='';
+    apRender();
+    updBadges();
+  }catch(e){toast('Error: '+e.message,'err')}
+  ldr(false);
+}
+function apSetUser(v){AP_USER=v;apRender()}
+function apCats(r){
+  const its=AP_ITEMS[r.id]||[];if(!its.length)return'';
+  const by={};its.forEach(i=>{const k=i.category||'otro';by[k]=by[k]||{n:0,a:0};by[k].n++;by[k].a+=parseFloat(i.amount)||0});
+  const chips=Object.entries(by).map(([k,v])=>`<span class="badge" style="background:#EEF2FF;color:#3730A3;margin:2px 4px 0 0">${CAT[k]||esc(k)} ×${v.n} · ${fmt(r2(v.a),r.currency)}</span>`).join('');
+  const rows=its.map(i=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--bd);font-size:12px"><span><strong>${CAT[i.category]||esc(i.category||'otro')}</strong> · ${esc(i.description||i.vendor||'Sin descripción')}${i.expense_date?` <span style="color:var(--soft)">(${fdate(i.expense_date)})</span>`:''}</span><span style="white-space:nowrap;font-weight:700">${fmt(parseFloat(i.amount)||0,r.currency)}</span></div>`).join('');
+  return`<div style="margin-top:6px">${chips}</div><details style="margin-top:4px"><summary style="font-size:12px;color:var(--soft);cursor:pointer">Ver ${its.length} gasto(s) con su descripción</summary><div style="margin-top:4px">${rows}</div></details>`;
+}
+function apRender(){
+  const wrap=document.getElementById('ap-wrap');if(!wrap)return;
+  const rpts=AP_USER?AP_ALL.filter(r=>r.user_id===AP_USER):AP_ALL;
+  AP_LIST=rpts;AP_SEL=new Set([...AP_SEL].filter(id=>rpts.some(r=>r.id===id&&apBulkOk(r))));
+  const nOk=rpts.filter(apBulkOk).length;
+  const ppl=[...new Map(AP_ALL.map(r=>[r.user_id,r])).values()].sort((a,b)=>(a.expense_profiles?.full_name||'').localeCompare(b.expense_profiles?.full_name||''));
+  const cnt=id=>AP_ALL.filter(r=>r.user_id===id).length;
+  const sel=`<div class="card" style="margin-bottom:12px"><div class="cb" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px"><label style="font-size:13px;font-weight:700" for="ap-user">Colaborador</label>
+    <select id="ap-user" class="fse" style="width:auto;min-width:220px;padding:6px 10px" onchange="apSetUser(this.value)"><option value="">Todos (${AP_ALL.length})</option>${ppl.map(r=>`<option value="${r.user_id}" ${AP_USER===r.user_id?'selected':''}>${esc(r.expense_profiles?.full_name||'—')} · ${esc(r.country||'')} (${cnt(r.user_id)})</option>`).join('')}</select></div></div>`;
+  wrap.innerHTML=sel+(nOk>1?`<div class="card" style="margin-bottom:12px;position:sticky;top:calc(56px + env(safe-area-inset-top,0px));z-index:3"><div class="cb" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px">
         <label style="display:flex;gap:6px;align-items:center;font-size:13px;flex:1 1 200px"><input type="checkbox" id="ap-all" ${AP_SEL.size===nOk?'checked':''} onchange="apSelAll(this.checked)"/> Seleccionar las ${nOk} sin alertas ni facturas faltantes</label>
         <button class="btn bok btn-sm" id="ap-bulk" onclick="apBulk()" ${AP_SEL.size?'':'disabled'}>✓ Aprobar seleccionadas (${AP_SEL.size})</button></div></div>`:'')
     +rpts.map(r=>`<div class="card" style="margin-bottom:10px"><div class="ch">
       <div style="display:flex;gap:10px;align-items:flex-start">${nOk>1?(apBulkOk(r)?`<input type="checkbox" style="margin-top:3px;width:18px;height:18px;flex:0 0 auto" aria-label="Seleccionar" ${AP_SEL.has(r.id)?'checked':''} onchange="apSel('${r.id}',this.checked)"/>`:`<span title="${AP_NOPHOTO.has(r.id)?'Le falta foto de factura':'Tiene alertas'}: revísala sola" style="flex:0 0 18px;margin-top:1px">⚠️</span>`):''}<div><div style="font-weight:700;font-size:14px">${r.expense_profiles?.full_name||'—'} · ${MON[r.period_month]} ${r.period_year}</div>
-      <div style="font-size:12px;color:var(--soft);margin-top:3px">${FLG[r.country]||''} ${r.country} · Total: <strong>${fmt(r.total_amount,r.currency)}</strong> ${r.advance_amount>0?`· Adelanto: ${fmt(r.advance_amount,r.currency)}`:''} · ${sbadge(r.status)} ${(r.policy_violations||0)>0?`<span class="badge" style="background:#FEF9C3;color:#854D0E;margin-left:4px">⚠️ ${r.policy_violations} alerta(s)</span>`:''}${AP_NOPHOTO.has(r.id)?'<span class="badge" style="background:#FEE2E2;color:#991B1B;margin-left:4px">📷 falta foto de factura</span>':''}</div></div>
+      <div style="font-size:12px;color:var(--soft);margin-top:3px">${FLG[r.country]||''} ${r.country} · Total: <strong>${fmt(r.total_amount,r.currency)}</strong> ${r.advance_amount>0?`· Adelanto: ${fmt(r.advance_amount,r.currency)}`:''} · ${sbadge(r.status)} ${(r.policy_violations||0)>0?`<span class="badge" style="background:#FEF9C3;color:#854D0E;margin-left:4px">⚠️ ${r.policy_violations} alerta(s)</span>`:''}${AP_NOPHOTO.has(r.id)?'<span class="badge" style="background:#FEE2E2;color:#991B1B;margin-left:4px">📷 falta foto de factura</span>':''}</div>${apCats(r)}</div>
       <div style="display:flex;gap:7px;flex-wrap:wrap">
         <button class="btn bgh btn-sm" onclick="viewRep('${r.id}')">Ver detalle</button>
         <button class="btn berr btn-sm" onclick="openAp('${r.id}','rechazar')">Rechazar</button>
         <button class="btn bok btn-sm" onclick="openAp('${r.id}','aprobar')">✓ Aprobar</button>
       </div></div></div></div>`).join('');
-    updBadges();
-  }catch(e){toast('Error: '+e.message,'err')}
-  ldr(false);
 }
 function setApMode(m){
   const rej=m==='rechazar';
