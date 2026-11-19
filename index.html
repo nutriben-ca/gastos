@@ -2601,10 +2601,10 @@ async function renderTeam(){
 const KM_TOL=0.15,FUEL_TOL={HNL:20,USD:1};
 // El plan semanal empezó a usarse la semana del 19 de octubre de 2026: las semanas anteriores no se cruzan
 const FUEL_PLAN_START='2026-10-19';
-async function fuelCross(userId,y,m,cycle,cur=null,extraDates=[]){
+async function fuelCross(userId,y,m,cycle,cur=null,extraDates=[],soloEstas=false){
   const last=new Date(y,m,0).getDate(),pad=n=>String(n).padStart(2,'0');
   const a=cycle==='segunda'?`${y}-${pad(m)}-16`:`${y}-${pad(m)}-01`,b=cycle==='segunda'?`${y}-${pad(m)}-${pad(last)}`:`${y}-${pad(m)}-15`;
-  const weeks=[];for(let w=monOf(a);w<=b;w=addDays(w,7))if(w>=FUEL_PLAN_START)weeks.push(w);
+  const weeks=[];if(!soloEstas)for(let w=monOf(a);w<=b;w=addDays(w,7))if(w>=FUEL_PLAN_START)weeks.push(w);
   // También las semanas de las cargas de esta liquidación, aunque estén fuera de su quincena
   (cur?.loads||[]).map(l=>l.expense_date).concat(extraDates||[]).forEach(d=>{if(!d)return;const w=monOf(d);if(w>=FUEL_PLAN_START&&!weeks.includes(w))weeks.push(w)});weeks.sort();
   if(!weeks.length)return[];
@@ -2637,7 +2637,7 @@ async function fuelCross(userId,y,m,cycle,cur=null,extraDates=[]){
       if(p.change_status==='pendiente')flags.push([p.change_late?'Cambio retroactivo sin aprobar':'Cambio sin aprobar','warn']);
       if(p.change_status==='aprobado')flags.push([p.change_late?'Cambio retroactivo aprobado':'Cambio aprobado','ok']);
       if(p.change_status==='rechazado')flags.push(['Cambio rechazado: vale el plan original','warn']);
-      if(p.unverified_legs)flags.push([`${p.unverified_legs} tramo(s) sin validar`,'warn']);
+      if(p.unverified_legs&&(FUEL.legs||[]).some(l=>!l.verified))flags.push([`${p.unverified_legs} tramo(s) sin validar`,'warn']);
     }
     // Margen por redondeo de bomba: L 20 en Honduras, $1 en El Salvador
     const fCur=FUEL.sedes.find(s=>s.code===p?.sede)?.country==='El Salvador'?'USD':'HNL',fTol=FUEL_TOL[fCur];
@@ -2672,7 +2672,7 @@ async function viewRep(id){
     const hcps=await sb(`hcp_attentions?report_id=eq.${id}&order=attention_date.asc`);
     let trips=[];if(FUEL_LIQ&&FUEL.ok){try{trips=await sb(`report_trips?report_id=eq.${id}&order=trip_date.asc,created_at.asc`)}catch(_){}}
     const ep=r.expense_profiles,cur=r.currency;
-    let cross='';if(FUEL.ok&&FUEL.sedes.some(s=>s.country===r.country)&&items.some(i=>i.category==='combustible')){try{if(!FUEL.legsOk)await loadLegs();cross=fuelCrossHtml(await fuelCross(r.user_id,r.period_year,r.period_month,r.cycle,null,items.filter(i=>i.category==='combustible').map(i=>i.expense_date)),cur)}catch(_){}}
+    let cross='';if(FUEL.ok&&FUEL.sedes.some(s=>s.country===r.country)&&items.some(i=>i.category==='combustible')){try{if(!FUEL.legsOk)await loadLegs();cross=fuelCrossHtml(await fuelCross(r.user_id,r.period_year,r.period_month,r.cycle,null,items.filter(i=>i.category==='combustible').map(i=>i.expense_date),true),cur)}catch(_){}}
     const rqh=await rqReportHtml(items,hcps,cur).catch(()=>'');
     // Combustible: misma lectura de odómetro en otra liquidación (posible carga duplicada)
     let dupH='';try{const odo=[...new Set(items.filter(i=>i.category==='combustible'&&i.odometer_km!=null).map(i=>i.odometer_km))];
