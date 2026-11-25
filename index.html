@@ -751,7 +751,8 @@ const POL_LIMITS={
   'El Salvador':{alimentacion:{desayuno:7,almuerzo:16,cena:15,diario:38},hotel:{noche:70}}
 };
 // Non-reimbursable keywords (for AI validation)
-const NO_REIMB=['alcohol','cerveza','vino','licor','ron','whisky','vodka','cigarro','cigarrillo','postre','helado','golosina','snack','dulce','propina adicional','propina extra','propina voluntaria','multa','entretenimiento','bar','discoteca','pelicula','cine'];
+// Palabras completas (sin tildes, en minúscula). Se comparan por palabra, no por subcadena: "camarón" no es "ron"
+const NO_REIMB=['alcohol','cerveza','vino','licor','ron','whisky','vodka','cigarro','cigarrillo','tabaco','postre','helado','golosina','snack','dulce','propina adicional','propina extra','propina voluntaria','multa','entretenimiento','bar','discoteca','pelicula','cine','lavanderia','acompanante','familiares','para llevar'];
 
 let CR_ORIG=null,CU=null,CRid=null,CAid=null,CTid=null,EL=[],HL=[],polLimits={};
 
@@ -882,8 +883,9 @@ function checkPolicy(line){
   return{ok:amt<=limit,limit,exceeded:amt>limit,pct,diff:amt-limit,perNight,nights};
 }
 function checkNoReimb(desc){
-  const d=(desc||'').toLowerCase();
-  return NO_REIMB.find(k=>d.includes(k))||null;
+  const d=String(desc||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  // Coincide solo con la palabra (o su plural), no dentro de otra palabra
+  return NO_REIMB.find(k=>new RegExp('(^|[^a-z])'+k.replace(/\s+/g,'\\s+')+'(s|es)?([^a-z]|$)').test(d))||null;
 }
 function buildViolations(){
   const vs=[];
@@ -897,6 +899,10 @@ function buildViolations(){
     if(l.ocr_amount!=null&&(parseFloat(l.amount)||0)>+l.ocr_amount+0.009)vs.push({type:'over_invoice',line:i+1,diff:(parseFloat(l.amount)||0)-l.ocr_amount,cur:rcur()});
   });
   HL.forEach((h,i)=>{if(h.ocr_amount!=null&&(parseFloat(h.amount)||0)>+h.ocr_amount+0.009)vs.push({type:'over_invoice',line:i+1,hcp:true,diff:(parseFloat(h.amount)||0)-h.ocr_amount,cur:rcur()})});
+  // Tope diario de alimentación (suma de desayuno + almuerzo + cena del mismo día)
+  {const dayTope=getLimit(rcountry(),'alimentacion','diario');
+   if(dayTope){const porDia={};EL.forEach(l=>{if(l.category!=='alimentacion'||!l.expense_date)return;porDia[l.expense_date]=(porDia[l.expense_date]||0)+(parseFloat(l.amount)||0)});
+    Object.entries(porDia).forEach(([d,tot])=>{if(tot>dayTope+0.009)vs.push({type:'daily_exceeded',date:d,diff:tot-dayTope,cur:rcur()})})}}
   vs.push(...rqViolations());
   vs.push(...fuelViolations());
   return vs;
@@ -906,11 +912,12 @@ function renderViolations(){
   const wrap=document.getElementById('violations-wrap');
   const sum=document.getElementById('violations-summary');
   if(!vs.length){if(wrap)wrap.innerHTML='';if(sum)sum.innerHTML='';return}
-  const crit=vs.some(v=>['over_invoice','exceeded','no_reimb','fuel_over','no_request','no_request_hcp','request_over'].includes(v.type));
+  const crit=vs.some(v=>['over_invoice','exceeded','daily_exceeded','no_reimb','fuel_over','no_request','no_request_hcp','request_over'].includes(v.type));
   const html=`<div class="viol-box ${crit?'critical':''}">
     <div class="viol-title ${crit?'critical':''}">⚠️ ${vs.length} alerta(s) de política</div>
     <ul class="viol-list ${crit?'critical':''}">${vs.map(v=>{
       if(v.type==='exceeded')return`<li>Línea ${v.line}: ${CAT[v.cat]} supera el tope en ${fmt(v.diff,v.cur)}</li>`;
+      if(v.type==='daily_exceeded')return`<li>Alimentación del ${v.date}: suma ${fmt(v.diff+getLimit(rcountry(),'alimentacion','diario'),v.cur)} y supera el tope diario en ${fmt(v.diff,v.cur)}</li>`;
       if(v.type==='weekend')return`<li>Línea ${v.line}: Combustible en fin de semana — requiere autorización previa</li>`;
       if(v.type==='no_reimb')return`<li>Línea ${v.line}: Posible gasto no reconocido ("${v.item}")</li>`;
       if(v.type==='missing_client')return`<li>Línea ${v.line}: Representación sin nombre de cliente (obligatorio §4.4)</li>`;
@@ -1911,6 +1918,23 @@ async function saveRep(status){
       const s=mine.find(x=>x.k!==k&&parseFloat(x.l.odometer_km)===km&&odoU(x.l)===odoU(l));
       if(s&&s.k>k)odoRep.push('• Líneas '+(k+1)+' y '+(s.k+1)+': misma lectura de odómetro ('+km.toLocaleString('es-HN')+')');}
     if(odoRep.length&&!confirm('⛽ Odómetro repetido (posible carga duplicada):\n'+odoRep.join('\n')+'\n\nSi es la misma carga, elimínala antes de enviar. ¿Son cargas distintas y quieres enviar así?'))return;
+  }
+  // Alimentación: el tope diario también suma lo ya liquidado en otras liquidaciones del mismo día (aviso, no bloquea)
+  if(status==='enviado'&&EL.some(l=>l.category==='alimentacion'&&l.expense_date)&&getLimit(rcountry(),'alimentacion','diario')){
+    const topeD=getLimit(rcountry(),'alimentacion','diario');
+    const alimL=EL.filter(l=>l.category==='alimentacion'&&l.expense_date);
+    const ds=[...new Set(alimL.map(l=>l.expense_date))];
+    let otros=[];
+    try{const reps=(await sb(`expense_reports?user_id=eq.${CU.id}&status=neq.rechazado&currency=eq.${rcur()}&select=id`)).filter(r=>r.id!==CRid);
+      if(reps.length)otros=await sb(`expense_items?report_id=in.(${reps.map(r=>r.id).join(',')})&category=eq.alimentacion&expense_date=in.(${ds.join(',')})&select=expense_date,amount`);
+    }catch(_){toast('No se pudo revisar el tope diario contra tus otras liquidaciones. Revisa tu conexión e intenta de nuevo','err');return}
+    const exc=[];
+    ds.forEach(d=>{
+      const aqui=alimL.filter(l=>l.expense_date===d).reduce((a,l)=>a+(parseFloat(l.amount)||0),0);
+      const antes=otros.filter(i=>i.expense_date===d).reduce((a,i)=>a+(parseFloat(i.amount)||0),0);
+      if(antes>0&&aqui+antes>topeD+0.009)exc.push('• '+d+': '+fmt(antes,rcur())+' ya liquidados en otra liquidación + '+fmt(aqui,rcur())+' aquí = '+fmt(aqui+antes,rcur())+' (tope '+fmt(topeD,rcur())+')');
+    });
+    if(exc.length&&!confirm('🍽️ Tope diario de alimentación superado con tus otras liquidaciones:\n'+exc.join('\n')+'\n\nEl excedente debes cubrirlo tú. ¿Enviar de todos modos?'))return;
   }
   // Combustible vs. plan semanal: aviso al enviar (no bloquea) y suma al contador de alertas
   let fuelBad=[];
